@@ -1,0 +1,185 @@
+generated: '2026-09-04'
+method: searched
+source: >-
+  https://docs.wego.com/api/conventions, https://docs.wego.com/api/how-search-works,
+  https://docs.wego.com/api/ids-expire, https://docs.wego.com/api/errors,
+  https://docs.wego.com/api/rate-limits, https://docs.wego.com/api/fares-rates-partners,
+  https://docs.wego.com/authentication, openapi/wego-api-openapi.json
+applies_to: wego-api
+summary: >-
+  Wego publishes its cross-cutting contract rules as first-class documentation pages rather
+  than leaving them implicit in the spec, and the API reference states outright that it is
+  "written to double as an agent tool contract". The result is unusually explicit runtime
+  semantics: async settlement, id lifetime, positive-witness fields, and a closed error
+  enum are all documented as rules that govern every endpoint.
+authentication:
+  style: OAuth2 bearer (RFC 6750)
+  flows:
+  - authorization_code + PKCE (S256) against https://auth.wego.com/user-auth/v2/users/oauth
+  - dynamic client registration for MCP clients at https://api.wego.com/mcp/register
+  header: 'Authorization: Bearer <token>'
+  public_client_id: '251815b9647317f4895122fd4924b7d44541d8fcc27be528435e3ad9bbf7e1ee'
+  public_client_id_note: >-
+    Published by Wego in its own docs and in the spec's x-scalar-client-id as a PUBLIC PKCE
+    client identifier. It is not a secret and is recorded here as contract detail.
+  scopes:
+  - openid
+  - profile
+  - users
+  open_operations:
+  - getHealth
+  see: authentication/wego-authentication.yml
+idempotency:
+  coverage: none
+  mechanism: null
+  header: null
+  note: >-
+    Wego documents no Idempotency-Key header, no replay window and no client-supplied
+    request key anywhere in the API reference, and the OpenAPI declares no such parameter on
+    either POST. Replaying createFlightSearch or createHotelSearch mints a NEW searchId and
+    spends another unit of the create quota, which is the tightest quota on the API - so a
+    naive retry is doubly costly. The mitigating fact is that neither write is consequential:
+    a search is an ephemeral read-optimised snapshot and no booking, payment or charge ever
+    happens through this API.
+reversibility:
+  grade: na
+  reason: no-consequential-write-surface
+  note: >-
+    The Wego API has three write operations and none of them commits anything a traveler
+    would need undone. createFlightSearch and createHotelSearch mint short-lived search
+    snapshots that expire on their own; submitFeedback records a rating and a message. Wego
+    states the boundary explicitly in its own skill: "Nothing is ever booked. The skill
+    searches, compares, and generates checkout links. No booking, payment, cancellation or
+    change happens through it." Booking, and therefore anything to reverse, happens on
+    wego.com after the handoff link. reversibility, dry_run_mode and idempotency are all na
+    for this surface for the same reason.
+  reversal_operations: []
+  other_surfaces:
+  - api: wego-distribution-hotel
+    grade: documented
+    reversal_operation: Cancel
+    docs: https://developers.wego.com/docs/distribution/hotel/api/cancel
+    window: null
+    note: >-
+      The Hotel B2B Distribution API DOES commit bookings and publishes a Cancel operation
+      plus a Retrieve to confirm state. The docs say "cancellation charges might applied
+      accordingly" but state no cancellation window, so this grades `documented` and not
+      `verified`. No window is asserted here because none is published.
+pagination:
+  style: offset/page-size with a candidate ceiling
+  params:
+  - pageSize
+  - offset
+  response_fields:
+  - metadata.resultCount
+  - metadata.totalCandidates
+  - metadata.hasMore
+  defaults:
+    page_size: 10
+  maximums:
+    page_size: 50
+  out_of_range: rejected with 400 validation_failed
+  note: >-
+    totalCandidates is post-dedup, pre-pagination - the ceiling pagination can reach. An
+    empty deep page with totalCandidates > 0 means the offset is past the end, not that
+    nothing matched.
+query_parameter_casing:
+  rule: >-
+    A parameter that mirrors a create-body or search-context field keeps that field's
+    camelCase (pageSize, searchId, siteCode). A net-new filter knob that exists only as a
+    query parameter is kebab-case (min-price, max-star, booking-types, stopover-airports).
+  example: '?pageSize=20&min-price=100'
+  note: Mixing the two in one query is the rule being followed, not two authors disagreeing.
+default_sort:
+  flights: score_desc
+  hotels: relevance
+  note: >-
+    Both mean the metasearch ranking. The names diverged before launch and are deliberately
+    kept stable rather than renamed, because renaming would break the live contract.
+async_semantics:
+  model: create returns a searchId immediately while providers keep answering
+  read_pattern: re-read results, backing off from about 300ms to 3s, until the search settles
+  hotels:
+    terminal_flag: searchComplete
+    note: >-
+      searchComplete:true is terminal; false is advisory. Poll
+      metadata.snapshotCandidateCount until it holds steady at a non-zero value. Once
+      complete, totalCandidates:0 means filters excluded everything if
+      metadata.totalBeforeFilters > 0, otherwise nothing bookable was found.
+  flights:
+    terminal_flag: null
+    note: >-
+      No completion flag. Re-read until metadata.snapshotFareCount holds steady across two
+      consecutive reads and metadata.snapshotTripCount is above zero.
+id_lifetime:
+  ephemeral:
+  - searchId
+  - tripId
+  - fareId
+  - rateId
+  stable:
+  - hotelId
+  note: >-
+    Every search-scoped id is opaque, context-bound and short-lived; a trip id only resolves
+    with the searchId it came from. A 404 on one that worked before means it expired -
+    create a new search and rethread; retrying never recovers. A 404 on a hotelId means the
+    hotel is unknown.
+  link_expiry_field: 'Every link the API returns carries "expires": true (booking/checkout)
+    or false (share link), so a client never has to infer it from the endpoint it called.'
+entity_reads:
+  asymmetric: true
+  note: >-
+    A hotel is a stable entity at the vertical root, so GET /v1/hotels/{hotelId} needs no
+    search context. A flight trip is a snapshot inside one search, so
+    GET /v1/flights/trips/{tripId}?searchId=... resolves only with the searchId it came from.
+positive_witness_fields:
+  note: >-
+    Several fields are documented as POSITIVE witnesses - present means true, absent means
+    "not established", never false. Reading absence as a negative is the documented failure
+    mode.
+  fields:
+  - field: price.covers
+    on: getFareOptions
+    note: >-
+      "trip" means one fareOptionId covers the journey; "leg" means one id per leg (max 8).
+      Absent means the upstream did not let Wego attribute the option - never that it covers
+      the trip. Passing a single "leg" id is rejected by nothing and silently opens a booking
+      page priced on one leg of a round trip.
+  - field: metadata.hasAmbiguity
+    on: getPlaces
+    note: Signal to ask the traveler which place they meant rather than take the top row.
+  - field: refundable filter on getHotelSearchResults
+    note: '?refundable=true is witnessed, not inferred.'
+error_envelope:
+  format: rfc9457
+  media_type: application/problem+json
+  branch_on: code
+  closed_enum: true
+  trace_field: trace_id (equals the x-trace-id response header)
+  see: errors/wego-problem-types.yml
+rate_limit_signaling:
+  headers:
+  - RateLimit
+  - RateLimit-Policy
+  - X-RateLimit-Limit
+  - X-RateLimit-Remaining
+  - X-RateLimit-Reset
+  - X-RateLimit-Resource
+  - Retry-After
+  exhaustion_status: 429
+  see: rate-limits/wego-rate-limits.yml
+versioning:
+  path_prefix: /v1
+  spec_version: 0.19.0
+  policy: >-
+    Research Preview - "Endpoints, response shapes, and CLI output can change while we
+    improve them. Read the API Reference rather than caching what you saw last month, and
+    pin nothing you cannot re-check." Additive response fields are expected and clients are
+    told not to validate against unknown ones.
+  see: lifecycle/wego-lifecycle.yml
+tracing:
+  request_id_header: x-trace-id
+  body_field: trace_id
+  session_header: >-
+    The CLI sends a per-task session id header so the API can group one task's commands into
+    a funnel; WEGO_CLI_NO_SESSION=1 removes it.

@@ -1,0 +1,148 @@
+overlay: 1.0.0
+info:
+  title: API Evangelist enrichment overlay for the Wego API
+  version: 1.0.0
+extends: openapi/wego-api-openapi.json
+x-generated: '2026-09-04'
+x-method: derived
+x-source: >-
+  openapi/wego-api-openapi.json plus the Wego documentation pages that state rules the spec
+  itself does not carry (https://docs.wego.com/api/errors,
+  https://docs.wego.com/api/rate-limits, https://docs.wego.com/api/how-search-works,
+  https://docs.wego.com/api/ids-expire, https://docs.wego.com/api/fares-rates-partners,
+  https://docs.wego.com/overview)
+x-note: >-
+  This overlay records API Evangelist's enrichment of the Wego contract. It never mutates the
+  original spec on disk. Every action below carries information Wego publishes in its own
+  documentation but does NOT encode in the machine contract - which is exactly the gap an
+  agent falls into when it reads the spec alone.
+actions:
+- target: $.info
+  description: Attach the repository's artifact index and the Research Preview status the spec omits.
+  update:
+    x-apis-io-artifacts:
+      authentication: authentication/wego-authentication.yml
+      scopes: scopes/wego-scopes.yml
+      errors: errors/wego-problem-types.yml
+      rate-limits: rate-limits/wego-rate-limits.yml
+      conventions: conventions/wego-conventions.yml
+      lifecycle: lifecycle/wego-lifecycle.yml
+      data-model: data-model/wego-data-model.yml
+      mcp: mcp/wego-mcp.yml
+      tool-crosswalk: mcp/wego-tool-crosswalk.yml
+      cli: cli/wego-cli.yml
+      skills: skills/_index.yml
+      conformance: conformance/wego-conformance.yml
+    x-lifecycle-stage: research-preview
+    x-lifecycle-note: >-
+      Endpoints and response shapes can change; Wego tells callers to pin nothing they cannot
+      re-check. There is no SLA and no deprecation policy.
+- target: $.info
+  description: Record the runtime semantics documented outside the contract.
+  update:
+    x-idempotency:
+      coverage: none
+      note: No Idempotency-Key header or replay window is documented or declared.
+    x-reversibility:
+      grade: na
+      note: >-
+        No consequential write surface. Searches are ephemeral snapshots and no booking,
+        payment or charge happens through this API.
+    x-error-envelope:
+      format: rfc9457
+      media_type: application/problem+json
+      branch_on: code
+      closed_enum: true
+    x-rate-limit-headers:
+    - RateLimit
+    - RateLimit-Policy
+    - X-RateLimit-Limit
+    - X-RateLimit-Remaining
+    - X-RateLimit-Reset
+    - X-RateLimit-Resource
+    - Retry-After
+- target: $.paths['/v1/flights/searches'].post
+  description: Record the async settlement rule and the per-operation quota, neither of which is in the spec.
+  update:
+    x-async-settlement:
+      terminal_flag: null
+      read_until: metadata.snapshotFareCount holds steady across two consecutive reads and
+        metadata.snapshotTripCount is above zero
+      backoff: 300ms to 3s
+    x-rate-limit:
+      quota_name: createFlightSearch
+      windows:
+      - limit: 10
+        window: 60s
+      - limit: 100
+        window: 3600s
+      - limit: 500
+        window: 86400s
+- target: $.paths['/v1/hotels/searches'].post
+  description: Record the dual quota name and the settlement rule.
+  update:
+    x-async-settlement:
+      terminal_flag: searchComplete
+      note: >-
+        searchComplete:true is terminal; false is advisory. Poll
+        metadata.snapshotCandidateCount until it holds steady at a non-zero value.
+    x-rate-limit:
+      quota_name_city_or_geo: createHotelSearch
+      quota_name_with_hotel_id: createHotelSearchScoped
+      note: >-
+        One operation, two quota names. A create carrying hotelId is metered as
+        createHotelSearchScoped (30/60s, 300/3600s, 1500/86400s); a city or geo create is
+        metered as createHotelSearch (10/60s, 100/3600s, 500/86400s). Match on the name the
+        RateLimit header carries, not on the operationId.
+- target: $.paths['/v1/hotels/{hotelId}/rates'].get
+  description: Record the 409 precondition and its quota.
+  update:
+    x-precondition:
+      requires: a searchId created with hotelId
+      failure: 409 rates_require_hotel_search
+      note: >-
+        A city or geo search is rejected. Only a hotel-scoped search prices the full room
+        list; re-reading a city search never deepens its sample.
+    x-rate-limit:
+      quota_name: getHotelRates
+      windows:
+      - limit: 60
+        window: 60s
+      - limit: 600
+        window: 3600s
+      - limit: 3000
+        window: 86400s
+- target: $.paths['/v1/flights/fares/{fareId}/options'].get
+  description: Record the fare-kind precondition and the covers semantics.
+  update:
+    x-precondition:
+      requires: a fare whose kind is "wego"
+      failure: 400
+      note: Airline and partner fares are fulfilled by the provider and do not work here.
+    x-covers-semantics:
+      values: [trip, leg]
+      positive_witness: true
+      note: >-
+        "trip" means pass exactly one fareOptionId; "leg" means pass one id per leg
+        (comma-separated, at most 8, none repeated). Absent means the upstream did not let
+        Wego attribute the option - never that it covers the trip. Passing a single "leg" id
+        is rejected by nothing and opens a booking page priced on one leg of a round trip.
+- target: $.paths['/v1/places'].get
+  description: Record the disambiguation rule.
+  update:
+    x-ambiguity:
+      field: metadata.hasAmbiguity
+      note: >-
+        When true, ask the traveler which place they meant rather than taking the top row.
+        An agent that resolves silently books the wrong Cambridge.
+- target: $.components.securitySchemes.oauth2
+  description: Record the discovery documents that make this flow self-configuring for agents.
+  update:
+    x-discovery:
+      authorization_server_metadata: https://api.wego.com/.well-known/oauth-authorization-server
+      protected_resource_metadata: https://api.wego.com/.well-known/oauth-protected-resource/mcp
+      dynamic_client_registration: https://api.wego.com/mcp/register
+      openid_configuration: null
+      openid_configuration_note: >-
+        An `openid` scope is offered but no /.well-known/openid-configuration is served on any
+        Wego host, so OIDC discovery is unavailable.

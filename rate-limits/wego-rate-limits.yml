@@ -1,0 +1,128 @@
+generated: '2026-09-04'
+method: searched
+source: https://docs.wego.com/api/rate-limits, https://developers.wego.com/docs/affiliate/get-started, https://developers.wego.com/docs/distribution/getting-started
+limit_count: 6
+summary: >-
+  The Wego API meters per client IP before authentication and per user after. Two kinds of
+  per-user quota apply at once: a general one across every operation, and a tighter
+  per-operation one on each of the costly operations, each metered over a minute, an hour
+  and a day window simultaneously. A request is rejected when any single window is spent.
+  Quota is spent per request attempted, so a rejected or invalid request costs the same as
+  a good one.
+limits:
+- api: wego-api
+  scope: per-user
+  operation: every operation
+  quota_name: user
+  limit: 300
+  window: 60s
+- api: wego-api
+  scope: per-user
+  operation: createFlightSearch
+  quota_name: createFlightSearch
+  limit: 10
+  window: 60s
+  additional_windows:
+  - limit: 100
+    window: 3600s
+    quota_name: createFlightSearch-hour
+  - limit: 500
+    window: 86400s
+    quota_name: createFlightSearch-day
+- api: wego-api
+  scope: per-user
+  operation: createHotelSearch (city or geo)
+  quota_name: createHotelSearch
+  limit: 10
+  window: 60s
+  additional_windows:
+  - limit: 100
+    window: 3600s
+  - limit: 500
+    window: 86400s
+- api: wego-api
+  scope: per-user
+  operation: createHotelSearch carrying hotelId
+  quota_name: createHotelSearchScoped
+  limit: 30
+  window: 60s
+  additional_windows:
+  - limit: 300
+    window: 3600s
+  - limit: 1500
+    window: 86400s
+  note: >-
+    The quota name is NOT the operationId here - a hotel create carrying hotelId is
+    metered as createHotelSearchScoped. Match on the name the header carries.
+- api: wego-api
+  scope: per-user
+  operation: getHotelRates
+  quota_name: getHotelRates
+  limit: 60
+  window: 60s
+  additional_windows:
+  - limit: 600
+    window: 3600s
+  - limit: 3000
+    window: 86400s
+- api: wego-affiliate
+  scope: per-application (client id)
+  operation: Search requests only (polling for results and other reads are not limited)
+  limit: 500
+  window: 3600s
+  test_key_limit: 50
+  test_key_window: 3600s
+  condition: >-
+    The regular-key limit can be raised on request if the partner maintains a
+    search-to-click ratio of at least 5%, and can be lowered if they do not.
+  source: https://developers.wego.com/docs/affiliate/get-started
+undocumented:
+- api: wego-distribution-flight
+  note: >-
+    "Limits apply to all APIs on an application basis (based on client id). Please check
+    with us for the rate limit number applied to your client id." No number is published.
+- api: wego-distribution-hotel
+  note: Same as the flight distribution API - the number is assigned per client id, not published.
+headers:
+  standard:
+  - name: RateLimit
+    format: '"user";r=283;t=41, "createFlightSearch";r=8;t=41, "createFlightSearch-hour";r=97;t=2000'
+    note: r = remaining, t = seconds until that window resets. One entry per quota window
+      that applied to the request.
+  - name: RateLimit-Policy
+    format: '"user";q=300;w=60, "createFlightSearch";q=10;w=60'
+    note: q = quota, w = window in seconds. This is authoritative for the caller's own
+      account, which may be on a larger quota than the published table.
+  legacy:
+  - name: X-RateLimit-Limit
+  - name: X-RateLimit-Remaining
+  - name: X-RateLimit-Reset
+  - name: X-RateLimit-Resource
+    note: Names which single window the legacy headers describe - the tightest window of the
+      operation called, or on a 429 the window that rejected the request.
+  retry:
+  - name: Retry-After
+    note: >-
+      Takes precedence over the reset in RateLimit, and carries the latest reset among the
+      windows hit, so a spent day quota can mean a long wait. Also present on upstream 503s
+      as a short transient hint, not a quota reset.
+exhaustion:
+  status: 429
+  code: rate_limited
+  envelope: application/problem+json (RFC 9457)
+  note: >-
+    A 429 raised by the general quota names only "user", because the general quota is
+    counted before the operation's own. Open endpoints carry no quota headers, and neither
+    does a 401 - metering happens after the token is verified.
+upstream:
+  status: 503
+  code: upstream_rate_limited
+  note: >-
+    A travel provider's own rate limit, shared across callers, so it can fire without the
+    caller having sent much. Wait the full Retry-After (60 seconds); the provider also
+    enforces a longer window, so one wait is not always enough.
+guidance: >-
+  Creating a search is the costly step. Thread one searchId through results rather than
+  re-creating: filtering, sorting and paging a search already held spends only the general
+  quota. Running at the full minute quota without pause spends the hour quota in ten
+  minutes, so pace against the hour and day windows.

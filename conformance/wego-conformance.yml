@@ -1,0 +1,147 @@
+generated: '2026-09-04'
+method: searched
+source: >-
+  openapi/wego-api-openapi.json, https://docs.wego.com/api/errors,
+  https://docs.wego.com/api/rate-limits, https://docs.wego.com/authentication,
+  https://api.wego.com/.well-known/oauth-authorization-server,
+  https://api.wego.com/.well-known/oauth-protected-resource/mcp, https://trust.wego.com/
+conformance:
+- id: openapi-3.1
+  conforms: true
+  evidence: >-
+    openapi/wego-api-openapi.json declares "openapi": "3.1.0" and parses; 22 paths, 22
+    operations, every one carrying an operationId, summary, description and tags. Served
+    first-party at https://api.wego.com/openapi (HTTP 200, application/json).
+- id: oauth2
+  conforms: true
+  evidence: >-
+    components.securitySchemes.oauth2 declares an authorizationCode flow against
+    https://auth.wego.com/user-auth/v2/users/oauth/authorize and .../token with three scopes;
+    applied at the document level as top-level security.
+- id: oauth2-pkce
+  conforms: true
+  evidence: >-
+    https://docs.wego.com/authentication states PKCE S256, and the spec carries
+    x-usePkce: "SHA-256". The MCP authorization-server metadata advertises
+    code_challenge_methods_supported: ["S256"] with token_endpoint_auth_methods_supported:
+    ["none"] (public client).
+- id: rfc6750
+  conforms: true
+  evidence: >-
+    bearerAuth securityScheme description cites RFC 6750; gated endpoints answer
+    WWW-Authenticate: Bearer error="invalid_token".
+- id: rfc8414
+  conforms: true
+  evidence: >-
+    https://api.wego.com/.well-known/oauth-authorization-server returns 200
+    application/json with issuer, authorization_endpoint, token_endpoint,
+    registration_endpoint, response_types_supported, code_challenge_methods_supported,
+    grant_types_supported, token_endpoint_auth_methods_supported and scopes_supported.
+- id: rfc9728
+  conforms: true
+  evidence: >-
+    https://api.wego.com/mcp answers 401 with
+    WWW-Authenticate: Bearer error="invalid_token", resource_metadata="https://api.wego.com/.well-known/oauth-protected-resource/mcp",
+    and that URL returns 200 application/json with resource, authorization_servers,
+    scopes_supported and resource_name.
+- id: rfc7591
+  conforms: true
+  evidence: >-
+    The authorization-server metadata advertises a registration_endpoint
+    (https://api.wego.com/mcp/register), i.e. OAuth 2.0 Dynamic Client Registration, which is
+    what lets an MCP client connect without a preprovisioned client id.
+- id: openid-connect
+  conforms: partial
+  evidence: >-
+    An `openid` scope is offered and documented ("OpenID Connect sign-in"), but no
+    /.well-known/openid-configuration is served on any Wego host (api.wego.com 401,
+    auth.wego.com 404, www.wego.com 404), so OIDC discovery is not available.
+- id: rfc9457
+  conforms: true
+  evidence: >-
+    Every error is application/problem+json against the shared `Problem` schema - the only
+    named component schema in the spec, referenced by 102 error responses. Documented at
+    https://docs.wego.com/api/errors with a closed `code` enum to branch on.
+- id: rfc9110-rate-limit-headers
+  conforms: true
+  evidence: >-
+    https://docs.wego.com/api/rate-limits documents the IETF-draft RateLimit and
+    RateLimit-Policy list headers (quota/window/remaining/reset per named window) alongside
+    the legacy X-RateLimit-* set and Retry-After.
+- id: pagination
+  conforms: true
+  evidence: >-
+    pageSize/offset with metadata.resultCount, metadata.totalCandidates and metadata.hasMore;
+    default 10, max 50, out-of-range rejected 400. Documented at
+    https://docs.wego.com/api/conventions and in the spec's response schemas.
+- id: idempotency
+  conforms: false
+  evidence: >-
+    No Idempotency-Key header, replay window or client-supplied request key anywhere in the
+    reference or the spec. See conventions/wego-conventions.yml (idempotency.coverage: none).
+- id: mcp
+  conforms: true
+  evidence: >-
+    A remote MCP server at https://api.wego.com/mcp, listed in the Claude connectors
+    directory (https://claude.ai/directory/connectors/wego). Live tools/list is OAuth-gated.
+- id: agent-skills
+  conforms: true
+  evidence: >-
+    Two provider-authored Agent Skills with the standard name/description frontmatter -
+    https://github.com/wego/skills (skills/wego/SKILL.md, Apache-2.0) and
+    https://docs.wego.com/skills/agent-onboarding/SKILL.md - plus a plugin.json declaring
+    $schema https://agent-plugins.org/schemas/1.0.0/plugin.schema.json.
+- id: llms-txt
+  conforms: true
+  evidence: >-
+    https://docs.wego.com/llms.txt (200, text/plain) indexes every documentation page, and a
+    nested https://docs.wego.com/api/llms.txt indexes the API reference. Each page is also
+    served as .md alongside the HTML.
+- id: gdpr
+  conforms: true
+  evidence: >-
+    Wego's Vanta-hosted Trust Center at https://trust.wego.com/ (HTTP 200) names GDPR as the
+    global standard it commits to, alongside a published data privacy policy at
+    https://company.wego.com/data-privacy-policy/.
+domain_standards:
+- id: iata-codes
+  conforms: true
+  evidence: >-
+    Places, flights and hotels are keyed on IATA airport and city codes throughout - the
+    getPlaces response schema documents `code` as "IATA-style code (airport/city)", the
+    affiliate flight search takes departureAirportCode/departureCityCode as "IATA Airport
+    Code"/"IATA City Code", and the CLI is documented with IATA examples (DXB, LHR, AMM).
+  spec_location: 'openapi/wego-api-openapi.json #/paths/~1v1~1places/get/responses/200 (results[].code)'
+  note: >-
+    IATA location coding (Resolution 763 / the IATA codeset) is the interchange standard for
+    this market. A partner who already speaks it integrates with no mapping layer.
+- id: iso-4217
+  conforms: true
+  evidence: >-
+    currencyCode is documented as "Currency code in which you want the fares to be in... Must
+    be ISO currency code format", and both distribution APIs publish the same 60-currency ISO
+    4217 list (USD, AED, SAR, INR, IDR, ...).
+  spec_location: https://developers.wego.com/docs/affiliate/references/flights
+- id: iso-3166
+  conforms: true
+  evidence: >-
+    siteCode is documented as "Country Code of the user. Must be in ISO country code format",
+    and /v1/countries/{countryCode}/holidays and /visa-free-destinations are country-code keyed.
+  spec_location: 'openapi/wego-api-openapi.json #/paths (countryCode path parameter)'
+- id: ota-opentravel
+  conforms: unknown
+  evidence: >-
+    The Hotel B2B Distribution API is served under an /ota/ path prefix
+    (https://api.wego.com/ota/hotels/v1/all-rates), which is the conventional shorthand for
+    OpenTravel/OTA messaging in this sector, but Wego publishes no OpenTravel schema,
+    namespace or version anywhere in its docs. Recorded as unknown rather than claimed: the
+    path segment is a hint, not a declaration, and the spec that would settle it is not served.
+  spec_location: https://developers.wego.com/docs/distribution/getting-started
+not_applicable:
+- id: fhir
+- id: fapi
+- id: scim
+- id: odata
+- id: psd2
+- id: json:api
+  note: Responses are plain JSON with a documented metadata envelope, not JSON:API.

@@ -1,0 +1,95 @@
+generated: '2026-09-04'
+method: searched
+source: >-
+  registry.npmjs.org, pypi.org, rubygems.org, proxy.golang.org, github.com/wego,
+  https://docs.wego.com/cli, https://api.wego.com/install
+note: >-
+  Wego ships no first-party HTTP client SDK for the current Wego API. The agent-facing
+  distribution is a signed Go binary (the `wego` CLI) installed from the provider's own
+  host, plus a published Agent Skill repository - neither of which has a package registry.
+  The one first-party library on npm, wego-sdk, wraps the older Wego marketplace surface
+  and has not been published since 2019-01-09. npm `wego` and PyPI `wego` are unrelated
+  WeChat libraries from other authors and are deliberately excluded.
+packages:
+- name: wego
+  registry: cdn
+  official: true
+  language: Go
+  kind: cli
+  version: 1.0.1
+  published: null
+  url: https://docs.wego.com/cli
+  install: curl -fsSL https://docs.wego.com/cli/install | bash
+  distribution: https://api.wego.com/install?dl=<asset>&ring=stable
+  assets:
+  - wego-darwin-arm64
+  - wego-darwin-x64
+  - wego-linux-arm64
+  - wego-linux-x64
+  - wego-windows-x64.exe
+  note: >-
+    Signed release binaries served from the provider's own host, verified against a
+    SHA256SUMS.txt manifest that the install endpoint releases only after checking a
+    cosign/Sigstore signed build record. Version read from
+    https://api.wego.com/install?dl=VERSION&ring=stable (HTTP 200, body "1.0.1"). There is
+    no package-registry entry, so no publish date is available - recorded null rather than
+    guessed.
+- name: wego (agent skill)
+  registry: github
+  official: true
+  language: Markdown
+  kind: agent-skill
+  version: null
+  published: '2026-09-03'
+  url: https://github.com/wego/skills
+  install: npx --yes skills add https://github.com/wego/skills --skill wego
+  note: >-
+    Provider-published Agent Skill, Apache-2.0, created 2026-07-23, last pushed
+    2026-09-03. Distributed from the repository rather than a registry, and carried
+    alongside the CLI by the installer, so there is no version string to read - the
+    published date is the repository's last push.
+- name: wego-sdk
+  registry: npm
+  official: true
+  language: JavaScript
+  kind: sdk
+  version: 0.0.20
+  published: '2019-01-09'
+  url: https://www.npmjs.com/package/wego-sdk
+  repository: https://github.com/wego/wego-sdk-js
+  note: >-
+    First-party ("Wego SDK for web", npm repository field points at github.com/wego/wego-sdk-js).
+    Last publish 2019-01-09 and the repository was last pushed 2023-06-08 - it predates the
+    current Wego API (OpenAPI 3.1, version 0.19.0) by six years and does not cover it.
+- name: github.com/wego/pkg
+  registry: go
+  official: true
+  language: Go
+  kind: internal-library
+  version: v0.0.0-20260902044104-36aef0696662
+  published: '2026-09-02'
+  url: https://pkg.go.dev/github.com/wego/pkg
+  repository: https://github.com/wego/pkg
+  note: >-
+    Wego's common Go packages, actively maintained (module proxy reports a pseudo-version
+    dated 2026-09-02). Shared internal building blocks rather than an API client - listed
+    for currency evidence, not as a way to call the API.
+- name: wego-money-bank
+  registry: rubygems
+  official: true
+  language: Ruby
+  kind: sdk
+  version: 0.1.0
+  published: '2017-06-30'
+  url: https://rubygems.org/gems/wego-money-bank
+  repository: https://github.com/wego/wego-money-bank
+  note: >-
+    First-party Ruby gem calculating exchange rates against Wego's own currency exchange
+    rate API. Last published 2017-06-30; the GitHub repository is archived.
+excluded:
+- name: wego
+  registry: npm
+  reason: WeChat SDK by another author (github.com/huyinghuan/wego) - not Wego travel.
+- name: wego
+  registry: pypi
+  reason: '"dead simple wechat sdk" by wegostudio - not Wego travel.'

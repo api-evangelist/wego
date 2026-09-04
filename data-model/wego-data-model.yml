@@ -1,0 +1,180 @@
+generated: '2026-09-04'
+method: derived
+source: openapi/wego-api-openapi.json, https://docs.wego.com/api/ids-expire, https://docs.wego.com/api/fares-rates-partners
+note: >-
+  Derived by walking the 22 operations' inline response schemas and the id-reference fields
+  that thread them (searchId, tripId, fareId, fareOptionId, legId, rateId, hotelId, and the
+  IATA code fields). The spec defines exactly ONE named component schema (`Problem`) and
+  inlines everything else, so there are no $ref edges to follow - the graph below is
+  reconstructed from the id fields and from Wego's own documented threading rules, not from
+  a components.schemas block.
+identifier_classes:
+- class: ephemeral (search-scoped)
+  ids:
+  - searchId
+  - tripId
+  - fareId
+  - fareOptionId
+  - rateId
+  behaviour: opaque, context-bound, short-lived; a 404 means expired, and re-requesting never recovers
+- class: stable
+  ids:
+  - hotelId
+  behaviour: names a stable entity; a 404 means the hotel is unknown
+- class: coded reference
+  ids:
+  - code (IATA airport/city)
+  - cityCode
+  - countryCode
+  - currencyCode (ISO 4217)
+  - siteCode (ISO 3166 market)
+  - airlineCode
+  - aircraftCode
+  behaviour: externally meaningful, stable, safe to persist and to build queries from
+entities:
+- name: Place
+  produced_by:
+  - getPlaces
+  - getNearbyPlaces
+  key: code
+  fields: [id, code, name, type, cityCode, latitude, longitude]
+  note: >-
+    `type` is one of city, airport, state, district or hotel. The response `id` is documented
+    as NOT for onward use - reference a place by code, or by cityCode for a hotels search.
+- name: FlightSearch
+  produced_by: [createFlightSearch]
+  key: searchId
+  fields: [searchId, siteCode, siteCodeSource]
+  lifetime: ephemeral
+- name: Trip
+  produced_by: [getFlightSearchResults, getFlightTrip]
+  key: tripId
+  lifetime: ephemeral
+  context: requires the searchId it came from
+- name: Leg
+  key: legId
+  context: belongs to a Trip
+- name: Fare
+  produced_by: [getFlightTrip]
+  key: fareId
+  fields: [kind, price, handoffUrl]
+  note: >-
+    kind is "wego", "airline" or "partner". Only a "wego" fare continues into getFareOptions
+    and getFareBookingLink; the other two are fulfilled by the airline or agency directly and
+    getFareOptions rejects them with a 400.
+- name: FareOption
+  produced_by: [getFareOptions]
+  key: fareOptionId
+  fields: [price.covers, legId]
+  note: >-
+    Ordered leg-first then price-within-leg. price.covers is "trip" (one id) or "leg" (one id
+    per leg, max 8) and is a positive witness - absent never means "covers the trip".
+- name: HotelSearch
+  produced_by: [createHotelSearch]
+  key: searchId
+  fields: [searchId, occupancy, siteCode, siteCodeSource]
+  lifetime: ephemeral
+  note: >-
+    A city or geo search and a hotel-scoped search (created with hotelId) are the same entity
+    with different reach, and only the hotel-scoped one prices a full room list.
+- name: Hotel
+  produced_by: [getHotel, getHotelSearchResults]
+  key: hotelId
+  lifetime: stable
+  fields: [hotelId, name, pageUrl, star, review, location, propertyType, brandName, chainName,
+    description, amenities, images, distanceToCityCentre, distanceToNearestAirport,
+    categorizedImages, reviewHighlights, highlights]
+- name: Rate
+  produced_by: [getHotelRates]
+  key: rateId
+  fields: [room name, board, refundability, price]
+  lifetime: ephemeral
+- name: HotelReview
+  produced_by: [getHotelReviews]
+  fields: [rating, pros, cons, provider]
+- name: Country
+  produced_by: [getCountryHolidays, getVisaFreeDestinations]
+  key: countryCode
+  lifetime: stable
+- name: FlightSchedule
+  produced_by: [getFlightSchedules]
+  note: Published timetable for a route - times, duration, aircraft, weekdays. No prices, no search.
+- name: User
+  produced_by: [getCurrentUser]
+  key: sub
+  fields: [sub, scope, email, name, first_name, last_name, country_code, uid, principal_name]
+  note: Read from verified access-token claims.
+- name: Link
+  produced_by: [getFareBookingLink, getFlightSearchLink, getHotelRateBookingLink, getHotelSearchLink]
+  fields: [bookingUrl or searchUrl, expires]
+  note: >-
+    Every link states its own kind - booking/checkout links carry expires:true, share links
+    expires:false.
+relationships:
+- from: FlightSearch
+  to: Trip
+  type: has_many
+  via: searchId
+- from: Trip
+  to: Leg
+  type: has_many
+  via: legId
+- from: Trip
+  to: Fare
+  type: has_many
+  via: fares[]
+- from: Fare
+  to: FareOption
+  type: has_many
+  via: fareId
+  condition: kind == "wego" only
+- from: FareOption
+  to: Leg
+  type: belongs_to
+  via: legId
+  condition: when price.covers == "leg"
+- from: Trip
+  to: FlightSearch
+  type: belongs_to
+  via: searchId (required query parameter on getFlightTrip)
+- from: HotelSearch
+  to: Hotel
+  type: has_many
+  via: searchId
+- from: Hotel
+  to: Rate
+  type: has_many
+  via: hotelId + a hotel-scoped searchId
+- from: Hotel
+  to: HotelReview
+  type: has_many
+  via: hotelId
+- from: Place
+  to: Place
+  type: belongs_to
+  via: cityCode (an airport or district belongs to a city)
+- from: FlightSearch
+  to: Place
+  type: references
+  via: IATA code (departure/arrival)
+- from: HotelSearch
+  to: Place
+  type: references
+  via: cityCode, hotelId or a lat/lng pair
+- from: Fare
+  to: Link
+  type: has_one
+  via: fareId -> getFareBookingLink
+- from: Rate
+  to: Link
+  type: has_one
+  via: hotelId + rateId -> getHotelRateBookingLink
+funnels:
+- vertical: flights
+  chain: createFlightSearch -> getFlightSearchResults -> getFlightTrip -> getFareOptions -> getFareBookingLink
+- vertical: hotels
+  chain: createHotelSearch -> getHotelSearchResults -> createHotelSearch(hotelId) -> getHotelRates -> getHotelRateBookingLink
+  note: >-
+    Hotels take one step flights do not. A city search holds only a sample of any one hotel's
+    rates, so pricing the full room list needs a SECOND search created with that hotelId;
+    reading rates against the city search is a 409 rates_require_hotel_search.

@@ -1,0 +1,56 @@
+generated: '2026-09-04'
+method: searched
+source: https://docs.wego.com/overview, https://docs.wego.com/api, openapi/wego-api-openapi.json, https://developers.wego.com/docs/distribution/getting-started
+maturity: research-preview
+current_version: 0.19.0
+versioning:
+  scheme: path prefix (/v1) plus a semver spec version in info.version
+  current_path: /v1
+  spec_version: 0.19.0
+  policy_url: https://docs.wego.com/overview
+  policy: >-
+    Declared a Research Preview. Wego states plainly that endpoints, response shapes and CLI
+    output can change while they improve them, tells callers to read the reference rather
+    than cache what they saw last month, and to pin nothing they cannot re-check.
+  additive_change_note: >-
+    The B2B Distribution getting-started makes the same promise from the other side: "APIs
+    could provide more parameters in API response in future dates... please do not validate
+    against new parameters."
+deprecation:
+  policy_published: false
+  sunset_header: false
+  deprecation_header: false
+  rfc8594: false
+  deprecated_operations: []
+  note: >-
+    No deprecation policy, no Sunset/Deprecation header contract, and no operation in the
+    OpenAPI carries `deprecated: true`. This is the clearest gap in an otherwise unusually
+    well-specified runtime contract, and it matters more than usual because the surface is
+    explicitly labelled a Research Preview where things change.
+sla:
+  published: false
+  note: '"There is no SLA yet, and we may pause a surface to fix it." - https://docs.wego.com/overview'
+status_page:
+  published: false
+  note: >-
+    status.wego.com resolves but redirects to https://support.wego.com/ (the consumer help
+    centre), so there is no operational status page. GET /health (unauthenticated, security:
+    [] in the spec) is the only liveness signal Wego publishes.
+health_endpoint:
+  operation: getHealth
+  path: /health
+  auth: none
+changelog:
+  published: false
+  note: >-
+    No dated changelog page exists on docs.wego.com (checked against its sitemap, 44 URLs,
+    none of them a changelog) or on developers.wego.com. Release history is visible only
+    indirectly, through the CLI VERSION file (1.0.1) and the info.version of the spec.
+coverage_caveats:
+- 'Results settle asynchronously and some routes, fares or hotels are missing. An empty
+  result is not proof that nothing exists.'
+- Booking stays on wego.com - the API returns a link and never takes a charge.
+feedback_channel:
+  operation: submitFeedback
+  cli: wego feedback
+  note: Wego routes roadmap input through the API itself rather than a public issue tracker.

@@ -1,0 +1,28 @@
+generated: '2026-09-04'
+method: derived
+source: openapi/wego-api-openapi.json
+summary:
+  types:
+  - http
+  - oauth2
+  oauth2_flows:
+  - authorizationCode
+schemes:
+- name: bearerAuth
+  type: http
+  scheme: bearer
+  bearerFormat: JWT
+  description: 'Wego auth server access token, sent as `Authorization: Bearer <token>` (RFC
+    6750).'
+  sources:
+  - openapi/wego-api-openapi.json
+- name: oauth2
+  type: oauth2
+  flows:
+  - flow: authorizationCode
+    authorizationUrl: https://auth.wego.com/user-auth/v2/users/oauth/authorize
+    tokenUrl: https://auth.wego.com/user-auth/v2/users/oauth/token
+    scopes: 3
+  description: OAuth2 authorization-code flow (PKCE supported) against the Wego auth server.
+  sources:
+  - openapi/wego-api-openapi.json

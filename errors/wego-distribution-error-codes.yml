@@ -1,0 +1,139 @@
+generated: '2026-09-04'
+method: searched
+source: >-
+  https://developers.wego.com/docs/distribution/flight/api/flight-b-2-b-distribution-apis-v-3,
+  https://developers.wego.com/docs/distribution/hotel/api/hotel-b-2-b-distribution-apis
+applies_to:
+- wego-distribution-flight
+- wego-distribution-hotel
+summary: >-
+  The B2B Distribution APIs return an HTTP status plus a numeric error code and message in
+  the body. The code space is shared between the flight and hotel surfaces for auth, rate
+  limiting and validation (10xxx / 4000x), and the hotel surface adds booking-lifecycle
+  codes the flight surface does not have.
+http_status_codes:
+- status: 400
+  meaning: Bad Request - the request could not be understood, malformed syntax.
+- status: 401
+  meaning: Unauthorized - ApiKey not found, or IP address restrictions violated.
+- status: 403
+  meaning: Forbidden - the authenticated client is not allowed to access the resource.
+- status: 429
+  meaning: Too Many Requests.
+- status: 500
+  meaning: Internal Server Error - unrecoverable problem processing the call.
+- status: 503
+  meaning: Service Unavailable - planned or ad-hoc maintenance.
+error_codes:
+- code: 10001
+  message: Invalid client_id or client_secret or grant_type or scope
+  class: auth
+  surfaces: [flight, hotel]
+- code: 10002
+  message: Application expired
+  class: auth
+  surfaces: [flight, hotel]
+- code: 10011
+  message: Authorization required
+  class: auth
+  surfaces: [flight, hotel]
+- code: 10012
+  message: Authorization required
+  class: auth
+  surfaces: [flight, hotel]
+- code: 10013
+  message: Authorization required
+  class: auth
+  surfaces: [flight, hotel]
+- code: 10014
+  message: Authorization error
+  class: auth
+  surfaces: [flight, hotel]
+- code: 10015
+  message: Authorization error
+  class: auth
+  surfaces: [flight, hotel]
+- code: 10016
+  message: Authorization error
+  class: auth
+  surfaces: [flight, hotel]
+- code: 10017
+  message: Authorization failed
+  class: auth
+  surfaces: [flight, hotel]
+- code: 10021
+  message: Rate limit exceeded
+  class: rate-limit
+  surfaces: [flight, hotel]
+- code: 10022
+  message: Rate limit exceeded
+  class: rate-limit
+  surfaces: [flight, hotel]
+- code: 40001
+  message: Invalid headers
+  class: validation
+  surfaces: [flight, hotel]
+- code: 40002
+  message: Invalid query
+  class: validation
+  surfaces: [flight, hotel]
+- code: 40003
+  message: Invalid body
+  class: validation
+  surfaces: [flight, hotel]
+- code: 40004
+  message: Invalid params
+  class: validation
+  surfaces: [flight, hotel]
+- code: 4000
+  message: Session invalid or expired
+  class: session
+  surfaces: [flight, hotel]
+- code: 40101
+  message: Unauthorized
+  class: auth
+  surfaces: [flight, hotel]
+- code: 40301
+  message: Forbidden
+  class: auth
+  surfaces: [flight, hotel]
+- code: 40401
+  message: Path not found
+  class: routing
+  surfaces: [flight, hotel]
+- code: 50301
+  message: Service unavailable
+  class: availability
+  surfaces: [flight, hotel]
+- code: 9999
+  message: Unexpected error
+  class: internal
+  surfaces: [flight, hotel]
+- code: 4005
+  message: Prebook id invalid or expired
+  class: booking
+  surfaces: [hotel]
+- code: 40105
+  message: Invalid rate id
+  class: booking
+  surfaces: [hotel]
+- code: 40402
+  message: Rate expired
+  class: booking
+  surfaces: [hotel]
+- code: 40403
+  message: Booking not found
+  class: booking
+  surfaces: [hotel]
+- code: 5004
+  message: Room sold out
+  class: availability
+  surfaces: [hotel]
+- code: 50004
+  message: Cancel booking error
+  class: booking
+  surfaces: [hotel]
+- code: 50005
+  message: Booking is already cancelled
+  class: booking
+  surfaces: [hotel]

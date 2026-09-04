@@ -1,0 +1,53 @@
+generated: '2026-09-04'
+method: searched
+source: >-
+  https://docs.wego.com/cli/install (installer source),
+  https://developers.wego.com/docs/distribution/getting-started,
+  https://developers.wego.com/docs/affiliate/get-started,
+  https://developers.wego.com/docs/distribution/flight/api/flight-b-2-b-distribution-apis-v-3
+summary: >-
+  Wego runs a full parallel staging estate rather than a test mode inside production. It is
+  named openly in two places: the CLI installer accepts WEGO_CLI_FLAVOR=wegostaging as one
+  of exactly two supported flavors, and the Flight B2B Distribution spec's OAuth2 token URL
+  points at api.wegostaging.com. There is no interactive console or hosted playground, and
+  no test cards or magic identifiers - this is a search API, and nothing it does takes a
+  payment.
+environments:
+- name: production
+  api_base: https://api.wego.com
+  token_url: https://api.wego.com/oauth/token
+  cli_flavor: wego
+  access: OAuth2 login with a Wego account
+- name: staging
+  api_base: https://api.wegostaging.com
+  token_url: https://api.wegostaging.com/oauth/token
+  cli_flavor: wegostaging
+  access: IP-whitelisted
+  access_note: >-
+    "Only trusted IP addresses are allowed to access to Wego's Staging endpoints. Partners
+    shall provide list of IP addresses to Wego account manager for whitelisting before
+    starting integration."
+  source: https://developers.wego.com/docs/distribution/getting-started
+test_keys:
+- api: wego-affiliate
+  kind: test key
+  quota: 50 search calls per hour (a regular key gets 500)
+  note: >-
+    The affiliate surface distinguishes a "test key" from a "regular key" purely by quota;
+    Wego publishes no key prefix or other marker to tell them apart in a request.
+  source: https://developers.wego.com/docs/affiliate/get-started
+test_data:
+  cards: null
+  magic_identifiers: null
+  fixtures: null
+  time_simulation: null
+  note: >-
+    None published, and none expected: the Wego API never takes a payment, and the Hotel B2B
+    booking flow is exercised against staging inventory rather than against fixtures.
+console:
+  interactive: false
+  reference_ui: https://api.wego.com/docs
+  reference_ui_note: >-
+    A Scalar-rendered API reference over https://api.wego.com/openapi. It renders live
+    request forms and is preconfigured with the public PKCE client id, but it is a reference
+    UI over the production API, not a sandbox.

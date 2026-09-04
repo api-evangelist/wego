@@ -1,0 +1,76 @@
+generated: '2026-09-04'
+method: probed
+source: >-
+  https://api.wego.com/mcp (HTTP 401, WWW-Authenticate: Bearer error="invalid_token",
+  resource_metadata="https://api.wego.com/.well-known/oauth-protected-resource/mcp"),
+  https://api.wego.com/.well-known/oauth-protected-resource/mcp (200),
+  https://api.wego.com/.well-known/oauth-authorization-server (200),
+  https://docs.wego.com/claude-connector
+name: Wego MCP server
+status: published
+summary: >-
+  Wego runs a first-party remote MCP server at https://api.wego.com/mcp. It is the
+  "Wego connector" listed in the Claude connectors directory, and it projects the same
+  flight/hotel/place funnel the REST API exposes. The endpoint is OAuth-protected and
+  advertises RFC 9728 protected-resource metadata plus RFC 8414 authorization-server
+  metadata with dynamic client registration, so an MCP client can complete the whole
+  authorization dance without a human pasting a token.
+deployment:
+  mode: remote
+  endpoint: https://api.wego.com/mcp
+  auth: oauth
+  verified: probed
+directories:
+- name: Claude connectors directory
+  url: https://claude.ai/directory/connectors/wego
+  source: https://docs.wego.com/claude-connector
+- name: ChatGPT plugin directory
+  url: https://chatgpt.com/plugins/plugin_asdk_app_699d77ab2460819190ca206f109541ca
+  source: https://docs.wego.com/chatgpt-plugin
+  note: >-
+    The same capability delivered as a ChatGPT plugin rather than over MCP; recorded
+    here as a sibling agent surface, not as a second MCP endpoint.
+oauth:
+  protected_resource_metadata: https://api.wego.com/.well-known/oauth-protected-resource/mcp
+  authorization_server_metadata: https://api.wego.com/.well-known/oauth-authorization-server
+  issuer: https://api.wego.com/mcp
+  authorization_endpoint: https://api.wego.com/mcp/authorize
+  token_endpoint: https://api.wego.com/mcp/token
+  registration_endpoint: https://api.wego.com/mcp/register
+  grant_types_supported:
+  - authorization_code
+  - refresh_token
+  code_challenge_methods_supported:
+  - S256
+  token_endpoint_auth_methods_supported:
+  - none
+  scopes_supported:
+  - openid
+  - profile
+  - users
+  resource_name: Wego API
+tools:
+  introspection: gated
+  note: >-
+    POST {"jsonrpc":"2.0","id":1,"method":"tools/list"} to https://api.wego.com/mcp
+    returned 401 application/problem+json ({"code":"invalid_token"}), so the live tool
+    list and its inputSchemas require an authenticated introspection. The tool surface
+    is therefore NOT recorded here as fact. See mcp/wego-tool-crosswalk.yml for the
+    OpenAPI operations the connector is documented to cover, mapped by name and
+    semantics with honest confidence.
+x-evidence:
+- url: https://api.wego.com/mcp
+  method: POST
+  http_status: 401
+  content_type: application/problem+json
+  fetched: '2026-09-04'
+- url: https://api.wego.com/.well-known/oauth-protected-resource/mcp
+  method: GET
+  http_status: 200
+  content_type: application/json
+  fetched: '2026-09-04'
+- url: https://api.wego.com/.well-known/oauth-authorization-server
+  method: GET
+  http_status: 200
+  content_type: application/json
+  fetched: '2026-09-04'

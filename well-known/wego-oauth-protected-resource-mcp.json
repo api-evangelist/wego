@@ -1,0 +1,1 @@
+{"resource":"https://api.wego.com/mcp","authorization_servers":["https://api.wego.com/mcp"],"scopes_supported":["openid","profile","users"],"resource_name":"Wego API"}

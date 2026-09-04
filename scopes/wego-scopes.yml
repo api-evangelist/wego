@@ -1,0 +1,30 @@
+generated: '2026-09-04'
+method: derived
+source: openapi/wego-api-openapi.json
+schemes:
+- name: oauth2
+  source: openapi/wego-api-openapi.json
+  flows:
+  - flow: authorizationCode
+    authorizationUrl: https://auth.wego.com/user-auth/v2/users/oauth/authorize
+    tokenUrl: https://auth.wego.com/user-auth/v2/users/oauth/token
+  description: OAuth2 authorization-code flow (PKCE supported) against the Wego auth server.
+scopes:
+- scope: openid
+  description: OpenID Connect sign-in.
+  flows:
+  - authorizationCode
+  sources:
+  - openapi/wego-api-openapi.json
+- scope: profile
+  description: Basic profile claims.
+  flows:
+  - authorizationCode
+  sources:
+  - openapi/wego-api-openapi.json
+- scope: users
+  description: User identity for the API.
+  flows:
+  - authorizationCode
+  sources:
+  - openapi/wego-api-openapi.json

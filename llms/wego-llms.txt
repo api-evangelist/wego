@@ -1,0 +1,18 @@
+# Wego for Travelers & AI Agents
+
+Read it yourself or hand it to your agent. Search and compare flights and hotels on Wego.
+
+Full corpus (all pages, one document): https://docs.wego.com/llms-full.txt
+
+## Pages
+
+- [Agent setup](https://docs.wego.com/agent-setup/index.md) – Give your agent the whole trip. Add the Wego skill and let your AI agent plan your travel, flights and hotels, just by asking.
+- [api](https://docs.wego.com/api/llms.txt)
+- [Authentication](https://docs.wego.com/authentication/index.md) – Get an OAuth2 bearer token for the Wego API, two ways.
+- [Wego in ChatGPT](https://docs.wego.com/chatgpt-plugin/index.md) – Add the Wego plugin to ChatGPT to search flights and hotels by asking, then book on Wego.
+- [Wego in Claude](https://docs.wego.com/claude-connector/index.md) – Add the Wego connector to Claude to search flights and hotels by asking, then book on Wego.
+- [Wego CLI](https://docs.wego.com/cli/index.md) – The same funnels, one command per step, built for people and agents.
+- [Wego API](https://docs.wego.com/overview/index.md) – What the Wego API is and how travelers and agents use it to search flights and hotels.
+- [Quickstart](https://docs.wego.com/quickstart/index.md) – Dubai to London, end to end, with curl.
+- [Use cases](https://docs.wego.com/use-cases/index.md) – Real runs, end to end: what people asked the Wego skill, and exactly what came back.
+- [Ways to use this API](https://docs.wego.com/ways-to-use/index.md) – The Wego plugin for ChatGPT, the Wego connector for Claude, the agent skill, the wego CLI, or direct HTTP.

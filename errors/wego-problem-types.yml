@@ -1,0 +1,129 @@
+generated: '2026-09-04'
+method: searched
+source: https://docs.wego.com/api/errors, openapi/wego-api-openapi.json
+format: rfc9457
+media_type: application/problem+json
+summary: >-
+  Every error on the Wego API is an RFC 9457 Problem Details body carried by the shared
+  `Problem` schema - the only named schema in the whole spec, referenced by 102 of the
+  spec's error responses. Clients branch on `code`, a closed enum, never on the human
+  `title` or `detail`. `trace_id` equals the `x-trace-id` response header.
+envelope:
+  fields:
+  - name: type
+    note: about:blank
+  - name: title
+    note: Fixed per code; carries no information code does not.
+  - name: status
+    note: Repeats the HTTP status.
+  - name: detail
+    note: The only field that varies per occurrence; written for a human reader. On
+      validation_failed it names the field and the fix.
+  - name: instance
+    note: The request path.
+  - name: code
+    note: The closed enum to branch on.
+  - name: trace_id
+    note: Equals the x-trace-id response header; quote it when reporting an issue.
+  closed_enum: true
+  unknown_code_guidance: >-
+    A code the client does not recognise means the client is older than the API - fall back
+    to the HTTP status.
+problem_types:
+- code: validation_failed
+  status: 400
+  title: Bad Request
+  meaning: A parameter or body field was rejected before any work happened.
+  remediation: Read detail, which names the field and the fix. Do not retry unchanged.
+- code: invalid_token
+  status: 401
+  title: Unauthorized
+  meaning: No bearer token, or one that is expired or not accepted.
+  remediation: Get a fresh access token and retry once. With the CLI, `wego login`.
+- code: insufficient_scope
+  status: 403
+  title: Forbidden
+  meaning: The token is valid but lacks a scope this operation needs.
+  remediation: Re-authorize asking for the required scope, then retry.
+- code: not_found
+  status: 404
+  title: Not Found
+  meaning: >-
+    On a search-scoped id (searchId, tripId, fareId, rateId) usually an EXPIRED id rather
+    than a wrong one - all four are opaque, context-bound and short-lived. On a hotelId,
+    which does not expire, it means the hotel is unknown.
+  remediation: >-
+    For a search-scoped id, create a new search and rethread the ids from it; retrying the
+    same id never recovers. For a hotelId, check the id - searching again will not help.
+- code: rates_require_hotel_search
+  status: 409
+  title: Conflict
+  meaning: >-
+    getHotelRates was given a searchId from a city or geo search. Only a search created
+    with hotelId prices a hotel's full room list.
+  remediation: >-
+    Create a search with hotelId plus the same dates and occupancy, then read its rates.
+    From the CLI, `wego hotels rooms <hotelId> <checkIn> <checkOut>`.
+- code: rate_limited
+  status: 429
+  title: Too Many Requests
+  meaning: A quota was exceeded.
+  remediation: >-
+    Wait Retry-After seconds; it takes precedence over the reset in RateLimit. Thread one
+    searchId through results rather than re-creating searches.
+- code: internal_error
+  status: 500
+  title: Internal Server Error
+  meaning: A fault on the API side.
+  remediation: Retry once, then quote trace_id if it persists.
+- code: bad_gateway
+  status: 502
+  title: Bad Gateway
+  meaning: A travel provider answered with something the API could not use.
+  remediation: Retry once. If it persists, quote trace_id.
+- code: upstream_unavailable
+  status: 503
+  title: Service Unavailable
+  meaning: A travel provider is temporarily unreachable.
+  remediation: Honor Retry-After and retry.
+- code: upstream_rate_limited
+  status: 503
+  title: Service Unavailable
+  meaning: >-
+    A travel provider's own rate limit rejected the call. That quota is shared across
+    callers, so it can fire without the caller having sent much.
+  remediation: >-
+    Wait the full Retry-After (60 seconds). If the retry gets the same error, wait the new
+    Retry-After again - the provider also enforces a longer window.
+spec_coverage:
+  derived_from: openapi/wego-api-openapi.json
+  response_counts:
+    '400': 20
+    '401': 21
+    '404': 9
+    '409': 1
+    '429': 21
+    '502': 15
+    '503': 15
+  note: >-
+    The spec declares no 403 response even though insufficient_scope (403) is in the
+    documented closed enum - a gap between the docs and the contract worth raising with
+    the provider.
+other_surfaces:
+- api: wego-affiliate
+  format: oauth2-rfc6749 + bare status codes
+  source: https://developers.wego.com/docs/affiliate/references/error-responses
+  codes:
+  - 200 Success
+  - 401 Unauthorised
+  - 422 Unprocessable Entity
+  - 429 Too Many Requests
+  note: Token errors follow RFC 6749 (error / error_description). Not RFC 9457.
+- api: wego-distribution-flight
+  format: numeric code + message
+  source: https://developers.wego.com/docs/distribution/flight/api/flight-b-2-b-distribution-apis-v-3
+  see: errors/wego-distribution-error-codes.yml
+- api: wego-distribution-hotel
+  format: numeric code + message
+  source: https://developers.wego.com/docs/distribution/hotel/api/hotel-b-2-b-distribution-apis
+  see: errors/wego-distribution-error-codes.yml

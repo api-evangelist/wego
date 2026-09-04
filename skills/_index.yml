@@ -1,0 +1,96 @@
+generated: '2026-09-04'
+method: searched
+source: https://github.com/wego/skills, https://docs.wego.com/skills/agent-onboarding/SKILL.md
+note: >-
+  Both skills are PROVIDER-AUTHORED and saved verbatim. Nothing in this directory was
+  generated on Wego's behalf. Wego ships them as its primary agent distribution channel:
+  the CLI installer carries the main skill alongside the binary, refreshes it silently once
+  a day, and `wego skill install` re-places it into a coding agent.
+skills:
+- file: skills/wego-travel-skill.md
+  name: wego
+  method: searched
+  source: https://raw.githubusercontent.com/wego/skills/main/skills/wego/SKILL.md
+  repository: https://github.com/wego/skills
+  license: Apache-2.0
+  api: wego-api
+  interface: wego CLI
+  size_bytes: 95934
+  description: >-
+    Use the Wego CLI to authenticate, resolve travel locations, look up visa-free
+    destinations for a passport, public holidays in a market, published flight timetables
+    and nearby airports, search and compare flights and hotels, inspect trips and room
+    rates, refine existing searches, and generate Wego or provider checkout links.
+  compatibility: >-
+    Requires the wego CLI on PATH (check with `wego version`) and network access to
+    api.wego.com. Designed for Claude Code and similar agent products.
+  covers:
+  - operating contract, preflight, metering, currency
+  - resolving places into codes
+  - reference lookups (holidays, visa-free, timetables, nearby airports)
+  - settled snapshots and what an empty page does and does not mean
+  - the flights funnel, search to checkout link
+  - the hotels funnel, search to checkout link
+  - combined flight + hotel trips
+  - pricing preferences and feedback
+  - recovery, login environments, exit codes
+  - worked prompt-to-command translations
+  operations:
+  - getPlaces
+  - getNearbyPlaces
+  - getCountryHolidays
+  - getVisaFreeDestinations
+  - getFlightSchedules
+  - createFlightSearch
+  - getFlightSearchResults
+  - getFlightTrip
+  - getTripExperience
+  - getFareOptions
+  - getFareBookingLink
+  - getFlightSearchLink
+  - createHotelSearch
+  - getHotelSearchResults
+  - getHotel
+  - getHotelReviews
+  - getHotelRates
+  - getHotelRateBookingLink
+  - getHotelSearchLink
+  - getCurrentUser
+  - submitFeedback
+  operations_note: >-
+    The skill drives these through `wego` subcommands rather than naming operationIds; the
+    mapping is in cli/wego-cli.yml and mcp/wego-tool-crosswalk.yml.
+  safety_boundaries:
+  - Nothing is ever booked - search, compare, and generate checkout links only.
+  - Asks the user before installing or updating the CLI, and before writing pricing
+    preferences to their machine.
+  - Login completes in the user's own browser; the skill never asks for, reads or prints a token.
+  - Every price comes from the response that carried it, never from an estimate.
+- file: skills/wego-agent-onboarding.md
+  name: wego-setup
+  method: searched
+  source: https://docs.wego.com/skills/agent-onboarding/SKILL.md
+  api: wego-api
+  size_bytes: 1673
+  description: >-
+    One-time setup so an agent can plan travel through Wego: install the wego CLI and its
+    skill, then follow that skill to search and compare flights and hotels.
+  note: >-
+    The bootstrap half of the pair. Wego publishes it at a stable docs URL precisely so the
+    setup line a user pastes ("Install the Wego CLI... Then read and follow
+    https://docs.wego.com/skills/agent-onboarding/SKILL.md") clears an agent's permission
+    gate, since a command a user pasted counts as consent where one discovered inside a
+    fetched page does not.
+plugin:
+  file: null
+  source: https://raw.githubusercontent.com/wego/skills/main/plugin.json
+  schema: https://agent-plugins.org/schemas/1.0.0/plugin.schema.json
+  name: wego
+  homepage: https://docs.wego.com
+  repository: https://github.com/wego/skills
+  license: Apache-2.0
+install:
+  from_repository: npx --yes skills add https://github.com/wego/skills --skill wego
+  from_cli: wego skill install
+  with_installer: curl -fsSL https://docs.wego.com/cli/install | bash
+  scopes: [user, project]

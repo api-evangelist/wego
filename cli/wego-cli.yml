@@ -1,0 +1,142 @@
+generated: '2026-09-04'
+method: searched
+source: https://docs.wego.com/cli
+name: wego
+summary: >-
+  A first-party command-line client for the Wego API, built for both people at a terminal
+  and coding agents. Every search and lookup command prints a single JSON envelope on
+  stdout so one step's output threads into the next; status and recovery guidance goes to
+  stderr and agents branch on the exit code. The CLI owns authorization, credential
+  storage, the one JSON envelope and metering; the Agent Skill it installs alongside itself
+  runs the conversation.
+version: 1.0.1
+version_source: https://api.wego.com/install?dl=VERSION&ring=stable
+install:
+- method: shell
+  command: curl -fsSL https://docs.wego.com/cli/install | bash
+  note: >-
+    Installs the `wego` binary and the agent skill together. Downloads are verified
+    fail-closed against a SHA256SUMS.txt manifest that the install endpoint releases only
+    after checking a cosign/Sigstore signed build record held on a separate prefix.
+- method: self
+  command: wego update
+platforms:
+- darwin-arm64
+- darwin-x64
+- linux-arm64
+- linux-x64
+- windows-x64
+command_groups:
+- group: auth
+  commands:
+  - command: wego login [--browser | --no-browser]
+    does: Browser OAuth2 PKCE login; stores the token locally. Detects an SSH session and
+      falls back to a paste-the-callback-URL flow.
+  - command: wego logout
+    does: Remove stored credentials.
+  - command: wego whoami
+    does: Print the authenticated user.
+    rest: getCurrentUser
+- group: places and reference
+  commands:
+  - command: wego places "<query>"
+    does: Resolve free text to a city, airport, state, district or hotel. --types narrows it.
+    rest: getPlaces
+  - command: wego info holidays
+    rest: getCountryHolidays
+  - command: wego info visa-free
+    rest: getVisaFreeDestinations
+  - command: wego info schedules
+    rest: getFlightSchedules
+  - command: wego info airports-near
+    rest: getNearbyPlaces
+- group: flights
+  commands:
+  - command: wego flights search <from> <to> <date>
+    does: Create a flight search and block until it settles.
+    rest: createFlightSearch
+  - command: wego flights results <searchId> [--wait]
+    rest: getFlightSearchResults
+  - command: wego flights trip <tripId> --search <searchId>
+    rest: getFlightTrip
+  - command: wego flights fares <fareId>
+    rest: getFareOptions
+  - command: wego flights booking-link <fareId> --trip <id> --fare-option <id> --from DXB --to LHR --date <date>
+    does: Print the wego.com booking URL. All five flags required; repeat --fare-option once
+      per leg when a fare covers one leg.
+    rest: getFareBookingLink
+  - command: wego flights experience <tripId>
+    rest: getTripExperience
+  - command: wego flights share <from> <to> <date>
+    does: A wego.com search link that does not expire.
+    rest: getFlightSearchLink
+- group: hotels
+  commands:
+  - command: wego hotels search <cityCode|hotelId|lat,lng> <checkIn> <checkOut>
+    rest: createHotelSearch
+  - command: wego hotels results <searchId> [--wait]
+    rest: getHotelSearchResults
+  - command: wego hotels details <hotelId>
+    rest: getHotel
+  - command: wego hotels reviews <hotelId>
+    rest: getHotelReviews
+  - command: wego hotels rooms <hotelId> <checkIn> <checkOut>
+    rest: getHotelRates
+  - command: wego hotels booking-link <hotelId> --rate <rateId>
+    rest: getHotelRateBookingLink
+  - command: wego hotels share <cityCode> <checkIn> <checkOut>
+    rest: getHotelSearchLink
+- group: config and skill
+  commands:
+  - command: wego config list | set <key> <value> | unset <key>
+    does: 'Defaults every other command inherits. Keys: currency, site, locale. Precedence:
+      flag, then config, then account market, then the default (USD, en, US).'
+  - command: wego skill list | install | path | uninstall
+    does: Manage the agent skill in a coding agent. --scope user|project and --agent <name>.
+  - command: wego feedback [--rating N] [--category VALUE] [--message "..."]
+    rest: submitFeedback
+  - command: wego telemetry status | enable | disable
+  - command: wego update | wego uninstall | wego version
+flows:
+- name: flights
+  chain: search -> results -> trip -> fares -> booking-link
+  note: fares is not optional - booking-link needs the fareOptionId it returns.
+- name: hotels
+  chain: search -> results -> rooms -> booking-link
+environment:
+- name: WEGO_CLI_TELEMETRY
+  values: on | off | log
+  does: Wins over the stored telemetry setting for one run.
+- name: WEGO_CREDENTIALS_PATH
+  default: ~/.config/wego/credentials.json
+- name: WEGO_CLI_REDIRECT_PORT
+  does: Fixed local port for the login callback (SSH port-forward flow).
+- name: WEGO_CLI_INSTALL_SKILL
+  values: '0'
+  does: Installer only - skip the agent-skill step.
+- name: WEGO_CLI_BIN
+  does: Installer only - rename the command (also names its config directory).
+- name: WEGO_CLI_INSTALL_DIR
+  default: ~/.local/bin
+- name: WEGO_CLI_FLAVOR
+  values: wego | wegostaging
+  does: Installer only - selects the production or staging build.
+- name: WEGO_CLI_NO_SESSION
+  values: '1'
+  does: Stops the per-task session id header the API uses to group a task's commands.
+output:
+  format: one JSON envelope per subcommand on stdout
+  exceptions:
+  - wego version
+  - wego feedback
+  - wego skill list (without --json)
+  settle_stamp: converged | budget_exhausted | unsettled
+  settle_note: >-
+    A CLI convenience only - the HTTP API returns no settle stamp.
+telemetry:
+  default: on
+  opt_out: wego telemetry disable, or WEGO_CLI_TELEMETRY=off for one run
+  sends: command and subcommand, flag names, some enum values, exit code, duration, CLI
+    version, OS and architecture, a random per-machine device id, a session id, and the
+    Wego account id when logged in
+  never_sends: search text, dates, messages

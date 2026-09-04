@@ -64,5 +64,47 @@
 > Full detail: **[Where this data comes from](https://apievangelist.com/about/where-our-data-comes-from)**
 <!-- API-EVANGELIST-PROVENANCE:END -->
 
-Wego is a company surfaced via the API Evangelist harvest backlog (source: secondary-market) and added to the network as a stub for full-pipeline profiling.
-- https://www.hiive.com/securities/wego-stock
+Wego (Wego Pte Ltd, Singapore, with a regional base in Dubai) is a travel metasearch engine
+and online travel agency serving travelers across the Middle East, North Africa, Southeast
+Asia and beyond. It compares flights and hotels across airlines, hotels and online travel
+agencies, and sells Book-on-Wego inventory directly.
+
+## API surfaces
+
+| API | Base URL | Contract | Docs |
+|---|---|---|---|
+| **Wego API** (agent-native REST) | `https://api.wego.com` | OpenAPI 3.1.0, v0.19.0, 22 operations, served at [`api.wego.com/openapi`](https://api.wego.com/openapi) | [docs.wego.com](https://docs.wego.com) |
+| **Wego Marketplace (Affiliate) API** | `https://affiliate-api.wego.com` | documented reference only | [developers.wego.com](https://developers.wego.com/docs/affiliate/get-started) |
+| **Flight B2B Distribution API v3** | `https://api.wego.com` | documented as OpenAPI 3.0.0; the portal's spec download does not resolve | [developers.wego.com](https://developers.wego.com/docs/distribution/getting-started) |
+| **Hotel B2B Distribution API** | `https://api.wego.com` | documented as OpenAPI 1.0.0; the portal's spec download does not resolve | [developers.wego.com](https://developers.wego.com/docs/distribution/getting-started) |
+
+## Agent surfaces
+
+Wego is unusually agent-forward for a travel company. It publishes, all first-party:
+
+- a **remote MCP server** at `https://api.wego.com/mcp`, OAuth-protected with RFC 9728
+  protected-resource metadata, RFC 8414 authorization-server metadata and dynamic client
+  registration — listed in the Claude connectors directory;
+- a **ChatGPT plugin** delivering the same capability;
+- two **Agent Skills**, Apache-2.0, at [github.com/wego/skills](https://github.com/wego/skills)
+  and `docs.wego.com/skills/agent-onboarding/SKILL.md`, saved verbatim under `skills/`;
+- the **`wego` CLI** (v1.0.1), signed release binaries verified fail-closed against a
+  cosign/Sigstore-backed checksum manifest;
+- an **`llms.txt`** index at `docs.wego.com/llms.txt`, with every docs page also served as `.md`.
+
+The API reference is written to double as an agent tool contract: RFC 9457 problem bodies
+with a closed `code` enum, RateLimit / RateLimit-Policy headers, documented async settlement
+rules, documented id expiry, and positive-witness fields.
+
+## Known gaps
+
+- No deprecation policy, no `Sunset`/`Deprecation` header contract, and no dated changelog —
+  on a surface Wego itself labels a Research Preview.
+- No status page (`status.wego.com` redirects to the consumer help centre).
+- No idempotency mechanism on either `POST`, and search creation is the tightest quota.
+- No `security.txt` and no published vulnerability disclosure programme.
+- The Developers Portal advertises "Export OpenAPI Spec" downloads for its three B2B specs
+  (`/oauth-1.0.0.yaml`, `/flight-3.0.0.yaml`, `/hotel-1.0.0.yaml`) that its own host does not
+  serve — every one returns the Docusaurus SPA shell.
+
+Full detail lives in the artifacts in this repository; `apis.yml` is the index.

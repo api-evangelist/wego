@@ -1,0 +1,40 @@
+generated: '2026-09-04'
+method: searched
+source: https://docs.wego.com/overview, https://docs.wego.com/api/rate-limits, https://developers.wego.com/docs/affiliate/get-started, https://developers.wego.com/docs/distribution/getting-started
+plan_count: 0
+summary: >-
+  Wego publishes no priced plans for any of its four API surfaces. The Wego API is a free
+  Research Preview whose only commercial control is a quota - "creating a search is metered,
+  because the API is a research preview" - and access is granted by logging in with a Wego
+  account rather than by buying a tier. The Marketplace/Affiliate and B2B Distribution APIs
+  are partner surfaces: credentials come from a Wego account manager, and the commercial
+  terms are the affiliate agreement and the distribution contract, neither of which is
+  published as a price list.
+plans: []
+access_model:
+- api: wego-api
+  gate: OAuth2 login with a Wego account (browser PKCE flow, or `wego login`)
+  price: none published
+  metering: >-
+    Quota only. Default per-user limits are published (300 requests/60s general, 10
+    createFlightSearch/60s, etc.) and "an account can be placed on a larger one" - but no
+    price is attached to the larger one.
+  source: https://docs.wego.com/api/rate-limits
+- api: wego-affiliate
+  gate: '"Please contact us to get API Credentials."'
+  price: none published
+  commercial_terms: >-
+    Governed by the API Agreement, which requires a search-to-click ratio of at least 5%;
+    the rate limit is raised or lowered against that ratio rather than against a paid tier.
+  source: https://developers.wego.com/docs/affiliate/get-started
+- api: wego-distribution-flight
+  gate: Partner onboarding through a Wego account manager, with IP whitelisting for staging.
+  price: none published
+  source: https://developers.wego.com/docs/distribution/getting-started
+- api: wego-distribution-hotel
+  gate: Partner onboarding through a Wego account manager, with IP whitelisting for staging.
+  price: none published
+  source: https://developers.wego.com/docs/distribution/getting-started
+note: >-
+  plan_count is 0 because Wego genuinely publishes no tiers, not because none were looked
+  for. There is no /pricing page on wego.com, docs.wego.com or developers.wego.com.

@@ -1,0 +1,199 @@
+generated: '2026-09-04'
+method: derived
+source: >-
+  openapi/wego-api-openapi.json (22 operations, OpenAPI 3.1.0, Wego API 0.19.0),
+  https://docs.wego.com/cli, https://docs.wego.com/claude-connector,
+  https://github.com/wego/skills (skills/wego/SKILL.md)
+note: >-
+  IMPORTANT PROVENANCE LIMIT. The live MCP tool list at https://api.wego.com/mcp is
+  OAuth-gated (tools/list returns 401 invalid_token), so the tool NAMES below are NOT
+  read from the server. They are the documented capability set of the Wego agent
+  surface - the `wego` CLI commands and the Claude connector's described behaviour -
+  bound to the REST operationIds that back them. Confidence is set accordingly: the
+  binding of capability to operation is high (the docs name the operationId or the
+  endpoint outright), the assertion that the MCP server exposes exactly one tool per
+  row is not, and is marked in `binding`. Wego's own API reference states that "every
+  operationId is a stable tool name", which is why the operationId is used as the
+  presumed tool name.
+surfaces:
+  openapi:
+    file: openapi/wego-api-openapi.json
+    source: https://api.wego.com/openapi
+    operations: 22
+    gated: false
+  mcp:
+    url: https://api.wego.com/mcp
+    gated: true
+    gate: OAuth 2.0 (RFC 9728 protected resource); tools/list returns 401 invalid_token
+  cli:
+    docs: https://docs.wego.com/cli
+    gated: false
+  graphql: null
+crosswalk:
+- tool: getPlaces
+  category: places
+  rest:
+  - getPlaces
+  cli: wego places "<query>"
+  binding: operationId-as-tool-name (documented convention); MCP list not introspected
+  confidence: medium
+- tool: getNearbyPlaces
+  category: places
+  rest:
+  - getNearbyPlaces
+  cli: wego info airports-near
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: getCountryHolidays
+  category: countries
+  rest:
+  - getCountryHolidays
+  cli: wego info holidays
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: getVisaFreeDestinations
+  category: countries
+  rest:
+  - getVisaFreeDestinations
+  cli: wego info visa-free
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: createFlightSearch
+  category: flights
+  rest:
+  - createFlightSearch
+  cli: wego flights search
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: getFlightSearchResults
+  category: flights
+  rest:
+  - getFlightSearchResults
+  cli: wego flights results
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: getFlightTrip
+  category: flights
+  rest:
+  - getFlightTrip
+  cli: wego flights trip
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: getTripExperience
+  category: flights
+  rest:
+  - getTripExperience
+  cli: wego flights experience
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: getFareOptions
+  category: flights
+  rest:
+  - getFareOptions
+  cli: wego flights fares
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: getFareBookingLink
+  category: flights
+  rest:
+  - getFareBookingLink
+  cli: wego flights booking-link
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: getFlightSchedules
+  category: flights
+  rest:
+  - getFlightSchedules
+  cli: wego info schedules
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: getFlightSearchLink
+  category: flights
+  rest:
+  - getFlightSearchLink
+  cli: wego flights share
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: createHotelSearch
+  category: hotels
+  rest:
+  - createHotelSearch
+  cli: wego hotels search
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+  note: >-
+    Rate-limited under two different quota names depending on the body - a create
+    carrying hotelId is metered as createHotelSearchScoped. One operation, two quotas.
+- tool: getHotelSearchResults
+  category: hotels
+  rest:
+  - getHotelSearchResults
+  cli: wego hotels results
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: getHotel
+  category: hotels
+  rest:
+  - getHotel
+  cli: wego hotels details
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: getHotelRates
+  category: hotels
+  rest:
+  - getHotelRates
+  cli: wego hotels rooms
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: getHotelReviews
+  category: hotels
+  rest:
+  - getHotelReviews
+  cli: wego hotels reviews
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: getHotelRateBookingLink
+  category: hotels
+  rest:
+  - getHotelRateBookingLink
+  cli: wego hotels booking-link
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: getHotelSearchLink
+  category: hotels
+  rest:
+  - getHotelSearchLink
+  cli: wego hotels share
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: getCurrentUser
+  category: user
+  rest:
+  - getCurrentUser
+  cli: wego whoami
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+- tool: submitFeedback
+  category: feedback
+  rest:
+  - submitFeedback
+  cli: wego feedback
+  binding: operationId-as-tool-name; MCP list not introspected
+  confidence: medium
+mcp_only: []
+rest_only:
+- operation: getHealth
+  reason: >-
+    Unauthenticated liveness probe (GET /health, security: []). Operational, not a
+    traveler capability - no agent tool would be built on it.
+coverage:
+  openapi_operations: 22
+  mapped: 21
+  rest_only: 1
+  mcp_only: 0
+  mcp_tools_observed: 0
+  mcp_tools_presumed: 21
+  note: >-
+    mcp_tools_observed is 0 on purpose: nothing was read from the live server. Re-run
+    this crosswalk with an authenticated tools/list to replace the presumed names and
+    lift confidence to high.
