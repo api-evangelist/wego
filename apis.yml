@@ -1,15 +1,14 @@
 aid: wego
 name: Wego
-description: 'Wego (Wego Pte Ltd, Singapore, with a regional base in Dubai) is a travel
-  metasearch engine and online travel agency serving travelers across the Middle East,
-  North Africa, Southeast Asia and beyond. It compares flights and hotels across airlines,
-  hotels and online travel agencies, and sells Book-on-Wego inventory directly. Wego
-  exposes that same search core through four public API surfaces: the OAuth2-protected
-  Wego API (an agent-native REST contract over places, flights, hotels, fares and rates,
-  published as OpenAPI 3.1 at api.wego.com/openapi, plus a remote MCP server, a wego
-  CLI and a published Agent Skill), a Marketplace/Affiliate metasearch API for partners
-  who embed Wego comparison into their own sites, and Flight and Hotel B2B Distribution
-  APIs for partners syndicating Book-on-Wego inventory.'
+description: 'Wego (Wego Pte Ltd, Singapore, with a regional base in Dubai) is a travel metasearch engine
+  and online travel agency serving travelers across the Middle East, North Africa, Southeast Asia and
+  beyond. It compares flights and hotels across airlines, hotels and online travel agencies, and sells
+  Book-on-Wego inventory directly. Wego exposes that same search core through four public API surfaces:
+  the OAuth2-protected Wego API (an agent-native REST contract over places, flights, hotels, fares and
+  rates, published as OpenAPI 3.1 at api.wego.com/openapi, plus a remote MCP server, a wego CLI and a
+  published Agent Skill), a Marketplace/Affiliate metasearch API for partners who embed Wego comparison
+  into their own sites, and Flight and Hotel B2B Distribution APIs for partners syndicating Book-on-Wego
+  inventory.'
 url: https://raw.githubusercontent.com/api-evangelist/wego/refs/heads/main/apis.yml
 image: https://avatars.githubusercontent.com/u/69198?v=4
 x-type: company
@@ -24,18 +23,28 @@ tags:
 - Hotels
 - Metasearch
 - Booking
+- agent-native
+- Tourism
+- Search
+tags_raw:
+- Company
+- Travel
+- Flights
+- Hotels
+- Metasearch
+- Booking
 - Agent Native
 - Tourism
 - Search
 apis:
-- aid: wego-api
+- aid: wego:wego-api
   image: https://avatars.githubusercontent.com/u/69198?v=4
   name: Wego API
-  description: 'The public Wego API: resolve travel locations, create asynchronous
-    flight and hotel searches, read ranked results, open one trip or hotel, list fares
-    and room rates, and build wego.com booking or share links. Reference lookups (public
-    holidays, visa-free destinations, flight schedules, nearby airports) need no search
-    at all. OAuth2 bearer, RFC 9457 problem bodies, RateLimit headers. Research Preview.'
+  description: 'The public Wego API: resolve travel locations, create asynchronous flight and hotel searches,
+    read ranked results, open one trip or hotel, list fares and room rates, and build wego.com booking
+    or share links. Reference lookups (public holidays, visa-free destinations, flight schedules, nearby
+    airports) need no search at all. OAuth2 bearer, RFC 9457 problem bodies, RateLimit headers. Research
+    Preview.'
   humanURL: https://docs.wego.com/api
   baseURL: https://api.wego.com
   tags:
@@ -73,17 +82,21 @@ apis:
     url: overlays/wego-api-overlay.yaml
   - type: DataModel
     url: data-model/wego-data-model.yml
-- aid: wego-affiliate
+- aid: wego:wego-affiliate
   image: https://avatars.githubusercontent.com/u/69198?v=4
   name: Wego Marketplace (Affiliate) API
-  description: 'The affiliate metasearch API: partners add Wego flight and hotel comparison
-    to their own site or app. Client-credentials OAuth2, create a search, poll for results,
-    then hand travelers off to Wego partner deep links. Rate limited to 500 search calls
-    per hour on a regular key and 50 per hour on a test key, conditioned on maintaining
-    a search-to-click ratio of at least 5%.'
+  description: 'The affiliate metasearch API: partners add Wego flight and hotel comparison to their own
+    site or app. Client-credentials OAuth2, create a search, poll for results, then hand travelers off
+    to Wego partner deep links. Rate limited to 500 search calls per hour on a regular key and 50 per
+    hour on a test key, conditioned on maintaining a search-to-click ratio of at least 5%.'
   humanURL: https://developers.wego.com/docs/affiliate/get-started
   baseURL: https://affiliate-api.wego.com
   tags:
+  - Flights
+  - Hotels
+  - Affiliates
+  - Metasearch
+  tags_raw:
   - Flights
   - Hotels
   - Affiliate
@@ -95,13 +108,13 @@ apis:
     url: https://developers.wego.com/docs/affiliate/references/flights
   - type: TermsOfService
     url: https://developers.wego.com/docs/affiliate/terms-of-service
-- aid: wego-distribution-flight
+- aid: wego:wego-distribution-flight
   image: https://avatars.githubusercontent.com/u/69198?v=4
   name: Wego Flight B2B Distribution API v3
-  description: 'B2B distribution API for partners to search and retrieve available flight
-    prices and itineraries from Wego inventory. OAuth2 client-credentials with a flight.search
-    scope; staging access is IP-whitelisted. Documented on the Wego Developers Portal
-    as OpenAPI 3.0.0, though the portal''s "Export OpenAPI Spec" download does not resolve.'
+  description: B2B distribution API for partners to search and retrieve available flight prices and itineraries
+    from Wego inventory. OAuth2 client-credentials with a flight.search scope; staging access is IP-whitelisted.
+    Documented on the Wego Developers Portal as OpenAPI 3.0.0, though the portal's "Export OpenAPI Spec"
+    download does not resolve.
   humanURL: https://developers.wego.com/docs/distribution/flight/api/flight-b-2-b-distribution-apis-v-3
   baseURL: https://api.wego.com
   tags:
@@ -115,14 +128,14 @@ apis:
     url: https://developers.wego.com/docs/distribution/flight/api/search-flight-prices
   - type: ErrorCatalog
     url: errors/wego-distribution-error-codes.yml
-- aid: wego-distribution-hotel
+- aid: wego:wego-distribution-hotel
   image: https://avatars.githubusercontent.com/u/69198?v=4
   name: Wego Hotel B2B Distribution API
-  description: 'B2B distribution API for partners to pull static property content, price
-    hotel rates for search criteria, and complete the full booking flow (price-check,
-    book, cancel, retrieve). OAuth2 client-credentials with hotel.search and hotel.booking
-    scopes; staging access is IP-whitelisted. Documented on the Wego Developers Portal
-    as OpenAPI 1.0.0, though the portal''s "Export OpenAPI Spec" download does not resolve.'
+  description: B2B distribution API for partners to pull static property content, price hotel rates for
+    search criteria, and complete the full booking flow (price-check, book, cancel, retrieve). OAuth2
+    client-credentials with hotel.search and hotel.booking scopes; staging access is IP-whitelisted. Documented
+    on the Wego Developers Portal as OpenAPI 1.0.0, though the portal's "Export OpenAPI Spec" download
+    does not resolve.
   humanURL: https://developers.wego.com/docs/distribution/hotel/api/hotel-b-2-b-distribution-apis
   baseURL: https://api.wego.com
   tags:
@@ -209,7 +222,6 @@ common:
   url: overlays/wego-api-overlay.yaml
 - type: MCPServer
   url: mcp/wego-mcp.yml
-
 x-enrichment:
   date: '2026-09-04'
   status: enriched
