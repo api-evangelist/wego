@@ -37,58 +37,14 @@ tags_raw:
 - Tourism
 - Search
 apis:
-- aid: wego:wego-api
-  image: https://avatars.githubusercontent.com/u/69198?v=4
-  name: Wego API
-  description: 'The public Wego API: resolve travel locations, create asynchronous flight and hotel searches,
-    read ranked results, open one trip or hotel, list fares and room rates, and build wego.com booking
-    or share links. Reference lookups (public holidays, visa-free destinations, flight schedules, nearby
-    airports) need no search at all. OAuth2 bearer, RFC 9457 problem bodies, RateLimit headers. Research
-    Preview.'
-  humanURL: https://docs.wego.com/api
-  baseURL: https://api.wego.com
-  tags:
-  - Flights
-  - Hotels
-  - Places
-  - Travel
-  - Metasearch
-  properties:
-  - type: OpenAPI
-    url: openapi/wego-api-openapi.json
-  - type: Documentation
-    url: https://docs.wego.com
-  - type: APIReference
-    url: https://docs.wego.com/api
-  - type: GettingStarted
-    url: https://docs.wego.com/quickstart
-  - type: Authentication
-    url: authentication/wego-authentication.yml
-  - type: OAuthScopes
-    url: scopes/wego-scopes.yml
-  - type: ErrorCatalog
-    url: errors/wego-problem-types.yml
-  - type: RateLimits
-    url: rate-limits/wego-rate-limits.yml
-  - type: MCPServer
-    url: mcp/wego-mcp.yml
-  - type: ToolCrosswalk
-    url: mcp/wego-tool-crosswalk.yml
-  - type: AgentSkill
-    url: skills/_index.yml
-  - type: CLI
-    url: cli/wego-cli.yml
-  - type: Overlay
-    url: overlays/wego-api-overlay.yaml
-  - type: DataModel
-    url: data-model/wego-data-model.yml
 - aid: wego:wego-affiliate
   image: https://avatars.githubusercontent.com/u/69198?v=4
   name: Wego Marketplace (Affiliate) API
-  description: 'The affiliate metasearch API: partners add Wego flight and hotel comparison to their own
-    site or app. Client-credentials OAuth2, create a search, poll for results, then hand travelers off
-    to Wego partner deep links. Rate limited to 500 search calls per hour on a regular key and 50 per
-    hour on a test key, conditioned on maintaining a search-to-click ratio of at least 5%.'
+  description: >-
+    The affiliate metasearch API: partners add Wego flight and hotel comparison to their own site or app.
+    Client-credentials OAuth2, create a search, poll for results, then hand travelers off to Wego partner
+    deep links. Rate limited to 500 search calls per hour on a regular key and 50 per hour on a test key,
+    conditioned on maintaining a search-to-click ratio of at least 5%.
   humanURL: https://developers.wego.com/docs/affiliate/get-started
   baseURL: https://affiliate-api.wego.com
   tags:
@@ -111,11 +67,13 @@ apis:
 - aid: wego:wego-distribution-flight
   image: https://avatars.githubusercontent.com/u/69198?v=4
   name: Wego Flight B2B Distribution API v3
-  description: B2B distribution API for partners to search and retrieve available flight prices and itineraries
-    from Wego inventory. OAuth2 client-credentials with a flight.search scope; staging access is IP-whitelisted.
+  description: >-
+    B2B distribution API for partners to search and retrieve available flight prices and itineraries from
+    Wego inventory. OAuth2 client-credentials with a flight.search scope; staging access is IP-whitelisted.
     Documented on the Wego Developers Portal as OpenAPI 3.0.0, though the portal's "Export OpenAPI Spec"
     download does not resolve.
-  humanURL: https://developers.wego.com/docs/distribution/flight/api/flight-b-2-b-distribution-apis-v-3
+  humanURL: >-
+    https://developers.wego.com/docs/distribution/flight/api/flight-b-2-b-distribution-apis-v-3
   baseURL: https://api.wego.com
   tags:
   - Flights
@@ -131,11 +89,11 @@ apis:
 - aid: wego:wego-distribution-hotel
   image: https://avatars.githubusercontent.com/u/69198?v=4
   name: Wego Hotel B2B Distribution API
-  description: B2B distribution API for partners to pull static property content, price hotel rates for
-    search criteria, and complete the full booking flow (price-check, book, cancel, retrieve). OAuth2
-    client-credentials with hotel.search and hotel.booking scopes; staging access is IP-whitelisted. Documented
-    on the Wego Developers Portal as OpenAPI 1.0.0, though the portal's "Export OpenAPI Spec" download
-    does not resolve.
+  description: >-
+    B2B distribution API for partners to pull static property content, price hotel rates for search criteria,
+    and complete the full booking flow (price-check, book, cancel, retrieve). OAuth2 client-credentials
+    with hotel.search and hotel.booking scopes; staging access is IP-whitelisted. Documented on the Wego
+    Developers Portal as OpenAPI 1.0.0, though the portal's "Export OpenAPI Spec" download does not resolve.
   humanURL: https://developers.wego.com/docs/distribution/hotel/api/hotel-b-2-b-distribution-apis
   baseURL: https://api.wego.com
   tags:
@@ -150,6 +108,240 @@ apis:
     url: https://developers.wego.com/docs/distribution/hotel/api/fetch-cheapest-rates
   - type: ErrorCatalog
     url: errors/wego-distribution-error-codes.yml
+- aid: wego:wego-countries-api
+  name: Wego Countries API
+  description: >-
+    Country-keyed reference data an agent can call before any search, and combine. `getCountryHolidays`
+    returns a market's public holidays for spotting long weekends; `getVisaFreeDestinations` returns where
+    a passport travels without a visa, as one complete list. Both take an ISO 3166-1 alpha-2 code as their
+    only path key, which is what groups them under one tag – their results combine (visa-free supplies
+    the destinations, holidays the free dates), rather than intersecting on a shared row field, since
+    a holiday row carries no country code of its own. The visa list carries no visa type and no permitted
+    stay – an absent country means absent from Wego's list, not that a visa is required.
+  humanURL: https://docs.wego.com/api
+  baseURL: https://api.wego.com
+  tags:
+  - Countries
+  properties:
+  - type: OpenAPI
+    url: openapi/wego-countries-api-openapi.yml
+  - type: Documentation
+    url: https://docs.wego.com
+  - type: APIReference
+    url: https://docs.wego.com/api
+  - type: GettingStarted
+    url: https://docs.wego.com/quickstart
+  - type: Authentication
+    url: authentication/wego-authentication.yml
+  - type: OAuthScopes
+    url: scopes/wego-scopes.yml
+  - type: ErrorCatalog
+    url: errors/wego-problem-types.yml
+  - type: RateLimits
+    url: rate-limits/wego-rate-limits.yml
+  - type: ToolCrosswalk
+    url: mcp/wego-tool-crosswalk.yml
+  - type: CLI
+    url: cli/wego-cli.yml
+  - type: DataModel
+    url: data-model/wego-data-model.yml
+- aid: wego:wego-feedback-api
+  name: Wego Feedback API
+  description: >-
+    Send feedback about the Wego CLI/API experience. `submitFeedback` records an optional category plus
+    at least one of a rating (1-5) or a free-text message (the CLI's `wego feedback`); a category alone
+    is rejected.
+  humanURL: https://docs.wego.com/api
+  baseURL: https://api.wego.com
+  tags:
+  - Feedback
+  properties:
+  - type: OpenAPI
+    url: openapi/wego-feedback-api-openapi.yml
+  - type: Documentation
+    url: https://docs.wego.com
+  - type: APIReference
+    url: https://docs.wego.com/api
+  - type: GettingStarted
+    url: https://docs.wego.com/quickstart
+  - type: Authentication
+    url: authentication/wego-authentication.yml
+  - type: OAuthScopes
+    url: scopes/wego-scopes.yml
+  - type: ErrorCatalog
+    url: errors/wego-problem-types.yml
+  - type: RateLimits
+    url: rate-limits/wego-rate-limits.yml
+  - type: ToolCrosswalk
+    url: mcp/wego-tool-crosswalk.yml
+  - type: CLI
+    url: cli/wego-cli.yml
+  - type: DataModel
+    url: data-model/wego-data-model.yml
+- aid: wego:wego-flights-api
+  name: Wego Flights API
+  description: >-
+    The flight funnel: `createFlightSearch` starts an async search, `getFlightSearchResults` reads ranked
+    snapshots while providers answer, `getFlightTrip` opens one trip with every fare. Fares with `kind:
+    "wego"` continue into `getFareOptions` and `getFareBookingLink`; airline and partner fares carry their
+    own handoff URL instead. Ids expire; a `404` means search again. `getFlightSchedules` sits outside
+    the funnel – a published timetable with no prices and no search to settle.
+  humanURL: https://docs.wego.com/api
+  baseURL: https://api.wego.com
+  tags:
+  - Flights
+  properties:
+  - type: OpenAPI
+    url: openapi/wego-flights-api-openapi.yml
+  - type: Documentation
+    url: https://docs.wego.com
+  - type: APIReference
+    url: https://docs.wego.com/api
+  - type: GettingStarted
+    url: https://docs.wego.com/quickstart
+  - type: Authentication
+    url: authentication/wego-authentication.yml
+  - type: OAuthScopes
+    url: scopes/wego-scopes.yml
+  - type: ErrorCatalog
+    url: errors/wego-problem-types.yml
+  - type: RateLimits
+    url: rate-limits/wego-rate-limits.yml
+  - type: ToolCrosswalk
+    url: mcp/wego-tool-crosswalk.yml
+  - type: CLI
+    url: cli/wego-cli.yml
+  - type: DataModel
+    url: data-model/wego-data-model.yml
+- aid: wego:wego-health-api
+  name: Wego Health API
+  description: The Health API from Wego — 1 operation(s) for health.
+  humanURL: https://docs.wego.com/api
+  baseURL: https://api.wego.com
+  tags:
+  - Health
+  properties:
+  - type: OpenAPI
+    url: openapi/wego-health-api-openapi.yml
+  - type: Documentation
+    url: https://docs.wego.com
+  - type: APIReference
+    url: https://docs.wego.com/api
+  - type: GettingStarted
+    url: https://docs.wego.com/quickstart
+  - type: Authentication
+    url: authentication/wego-authentication.yml
+  - type: OAuthScopes
+    url: scopes/wego-scopes.yml
+  - type: ErrorCatalog
+    url: errors/wego-problem-types.yml
+  - type: RateLimits
+    url: rate-limits/wego-rate-limits.yml
+  - type: ToolCrosswalk
+    url: mcp/wego-tool-crosswalk.yml
+  - type: CLI
+    url: cli/wego-cli.yml
+  - type: DataModel
+    url: data-model/wego-data-model.yml
+- aid: wego:wego-hotels-api
+  name: Wego Hotels API
+  description: >-
+    The hotel funnel, same shape as flights: `createHotelSearch`, `getHotelSearchResults` for ranked hotels,
+    `getHotel` for static detail, `getHotelRates` for bookable rooms and rates (cheapest first, with board
+    and refundability), `getHotelRateBookingLink` for the wego.com checkout URL.
+  humanURL: https://docs.wego.com/api
+  baseURL: https://api.wego.com
+  tags:
+  - Hotels
+  properties:
+  - type: OpenAPI
+    url: openapi/wego-hotels-api-openapi.yml
+  - type: Documentation
+    url: https://docs.wego.com
+  - type: APIReference
+    url: https://docs.wego.com/api
+  - type: GettingStarted
+    url: https://docs.wego.com/quickstart
+  - type: Authentication
+    url: authentication/wego-authentication.yml
+  - type: OAuthScopes
+    url: scopes/wego-scopes.yml
+  - type: ErrorCatalog
+    url: errors/wego-problem-types.yml
+  - type: RateLimits
+    url: rate-limits/wego-rate-limits.yml
+  - type: ToolCrosswalk
+    url: mcp/wego-tool-crosswalk.yml
+  - type: CLI
+    url: cli/wego-cli.yml
+  - type: DataModel
+    url: data-model/wego-data-model.yml
+- aid: wego:wego-places-api
+  name: Wego Places API
+  description: >-
+    Turn free text into typed travel locations. `getPlaces` resolves a city, airport, district or hotel
+    name to results carrying the codes the flight and hotel searches take as input. `getNearbyPlaces`
+    answers the follow-up – which other airports serve the same trip – from a place code or a coordinate
+    pair.
+  humanURL: https://docs.wego.com/api
+  baseURL: https://api.wego.com
+  tags:
+  - Places
+  properties:
+  - type: OpenAPI
+    url: openapi/wego-places-api-openapi.yml
+  - type: Documentation
+    url: https://docs.wego.com
+  - type: APIReference
+    url: https://docs.wego.com/api
+  - type: GettingStarted
+    url: https://docs.wego.com/quickstart
+  - type: Authentication
+    url: authentication/wego-authentication.yml
+  - type: OAuthScopes
+    url: scopes/wego-scopes.yml
+  - type: ErrorCatalog
+    url: errors/wego-problem-types.yml
+  - type: RateLimits
+    url: rate-limits/wego-rate-limits.yml
+  - type: ToolCrosswalk
+    url: mcp/wego-tool-crosswalk.yml
+  - type: CLI
+    url: cli/wego-cli.yml
+  - type: DataModel
+    url: data-model/wego-data-model.yml
+- aid: wego:wego-user-api
+  name: Wego User API
+  description: >-
+    The authenticated caller. `getCurrentUser` returns the identity behind the bearer token (the CLI's
+    `wego whoami`).
+  humanURL: https://docs.wego.com/api
+  baseURL: https://api.wego.com
+  tags:
+  - User
+  properties:
+  - type: OpenAPI
+    url: openapi/wego-user-api-openapi.yml
+  - type: Documentation
+    url: https://docs.wego.com
+  - type: APIReference
+    url: https://docs.wego.com/api
+  - type: GettingStarted
+    url: https://docs.wego.com/quickstart
+  - type: Authentication
+    url: authentication/wego-authentication.yml
+  - type: OAuthScopes
+    url: scopes/wego-scopes.yml
+  - type: ErrorCatalog
+    url: errors/wego-problem-types.yml
+  - type: RateLimits
+    url: rate-limits/wego-rate-limits.yml
+  - type: ToolCrosswalk
+    url: mcp/wego-tool-crosswalk.yml
+  - type: CLI
+    url: cli/wego-cli.yml
+  - type: DataModel
+    url: data-model/wego-data-model.yml
 maintainers:
 - FN: Kin Lane
   email: kin@apievangelist.com
