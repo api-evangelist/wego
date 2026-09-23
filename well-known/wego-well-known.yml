@@ -1,26 +1,29 @@
-generated: '2026-09-04'
+generated: '2026-09-19'
 method: probed
 source: live GET of the named /.well-known/ path list on every host this record knows
-note: >-
-  Probed the registrable domain and www, every apis[].baseURL host, the OpenAPI
-  servers[] host, the docs host, the legacy developers portal, the auth host named
-  in the OpenAPI oauth2 flow, and the support host. Two real documents were served,
-  both on api.wego.com and both about the remote MCP server: the RFC 8414
-  authorization-server metadata and the RFC 9728 protected-resource metadata for
-  /mcp. developers.wego.com answers 200 with the same 20,614-byte Docusaurus SPA
-  shell for every /.well-known/* path - that is a catch-all, not a document, and is
-  recorded as a miss. api.wego.com answers 401 application/problem+json on the rest
-  of the /.well-known/* prefix (its API auth middleware runs in front of it), which
-  is a gate rather than a served document, so no AgentCard pointer is emitted.
+note: 'Probed the registrable domain and www, every apis[].baseURL host, the OpenAPI servers[] host, the
+  docs host, the legacy developers portal, the auth host named in the OpenAPI oauth2 flow, and the support
+  host. Two real documents were served, both on api.wego.com and both about the remote MCP server: the
+  RFC 8414 authorization-server metadata and the RFC 9728 protected-resource metadata for /mcp. developers.wego.com
+  answers 200 with the same 20,614-byte Docusaurus SPA shell for every /.well-known/* path - that is a
+  catch-all, not a document, and is recorded as a miss. api.wego.com answers 401 application/problem+json
+  on the rest of the /.well-known/* prefix (its API auth middleware runs in front of it), which is a gate
+  rather than a served document, so no AgentCard pointer is emitted.
+
+
+  MCP-host OAuth discovery added 2026-09-19 (roadmap#321/#337): the harvest visits a provider''s primary
+  hosts, and RFC 9728 protected-resource metadata lives on the MCP host, so these documents existed and
+  were invisible to the scorer. Fetched live and validated on `resource`/`issuer`; one negative control
+  per host.'
 hosts:
 - host: api.wego.com
   documents:
   - path: /.well-known/oauth-authorization-server
     status: 200
-    file: well-known/wego-oauth-authorization-server.json
+    file: wego-oauth-authorization-server.json
   - path: /.well-known/oauth-protected-resource/mcp
     status: 200
-    file: well-known/wego-oauth-protected-resource-mcp.json
+    file: wego-oauth-protected-resource-mcp.json
   - path: /.well-known/oauth-protected-resource
     status: 401
   - path: /.well-known/openid-configuration
@@ -35,6 +38,15 @@ hosts:
     status: 401
   - path: /.well-known/agent.json
     status: 401
+  - path: /.well-known/oauth-protected-resource
+    status: 200
+    file: wego-api-oauth-protected-resource.json
+    bytes: 167
+  - path: /mcp/.well-known/oauth-authorization-server
+    status: 200
+    file: wego-api-oauth-authorization-server.json
+    bytes: 449
+  path_echo_control: passed
 - host: www.wego.com
   documents:
   - path: /.well-known/security.txt
@@ -144,3 +156,15 @@ hosts:
     status: 404
   - path: /.well-known/agent.json
     status: 404
+x-mcp-probe:
+  probed: '2026-09-19'
+  issue: roadmap#321, roadmap#337
+  documents:
+  - host: https://api.wego.com
+    path: /.well-known/oauth-protected-resource
+    file: wego-api-oauth-protected-resource.json
+  - host: https://api.wego.com
+    path: /mcp/.well-known/oauth-authorization-server
+    file: wego-api-oauth-authorization-server.json
+  validated_on: resource (RFC 9728) / issuer (RFC 8414, OIDC)
+  negative_control: one per host; a 2xx JSON object at an impossible path discards the host

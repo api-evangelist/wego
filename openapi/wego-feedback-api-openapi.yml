@@ -1,0 +1,153 @@
+openapi: 3.2.0
+info:
+  title: Wego Feedback API
+  description: 'Wego''s travel API: places, flights, hotels and fares. Please see https://docs.wego.com for more details.'
+  version: 0.19.0
+servers:
+- url: https://api.wego.com
+security:
+- oauth2: []
+- bearerAuth: []
+tags:
+- name: Feedback
+  description: Send feedback about the Wego CLI/API experience. `submitFeedback` records an optional category plus at least one of a rating (1-5) or a free-text message (the CLI's `wego feedback`); a category alone is rejected.
+paths:
+  /v1/feedback:
+    post:
+      operationId: submitFeedback
+      tags:
+      - Feedback
+      summary: Submit feedback
+      description: 'Records feedback about the Wego CLI/API experience – a rating (1-5), a category, and/or a free-text message. At least one of rating or message is required. Fire-and-forget: returns 202 and never blocks on recording.'
+      responses:
+        '202':
+          description: Feedback accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: received
+                    description: The feedback was accepted.
+                required:
+                - status
+        '400':
+          description: Invalid feedback body (e.g. neither rating nor message provided).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rating:
+                  example: 5
+                  description: Overall rating, 1 (poor) to 5 (great).
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                category:
+                  description: Which area the feedback is about.
+                  type: string
+                  enum:
+                  - flights
+                  - hotels
+                  - other
+                message:
+                  example: Fare options were exactly what I needed.
+                  description: Free-text feedback (bugs, ideas, what worked).
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+                version:
+                  description: CLI version the feedback came from.
+                  type: string
+                  maxLength: 50
+              additionalProperties: false
+components:
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details, served as application/problem+json.
+      required:
+      - type
+      - title
+      - status
+      - instance
+      - code
+      - trace_id
+      properties:
+        type:
+          type: string
+          format: uri
+          description: Problem-type URI. `about:blank` for now (no semantics beyond the status); real type URIs follow once the public host is fixed.
+        title:
+          type: string
+          description: Fixed human summary, the same across a `code`.
+        status:
+          type: integer
+          description: The HTTP status code, repeated as a JSON number.
+        detail:
+          type: string
+          description: Instance-specific human explanation of this failure.
+        instance:
+          type: string
+          description: The request path this occurrence happened on.
+        code:
+          type: string
+          enum:
+          - validation_failed
+          - invalid_token
+          - insufficient_scope
+          - not_found
+          - rates_require_hotel_search
+          - rate_limited
+          - bad_gateway
+          - upstream_unavailable
+          - upstream_rate_limited
+          - internal_error
+          description: Stable machine token from a closed enum – the field an agent branches on.
+        trace_id:
+          type: string
+          description: Correlates this response to its logs; also returned in the `x-trace-id` response header.
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'Wego auth server access token, sent as `Authorization: Bearer <token>` (RFC 6750).'
+    oauth2:
+      type: oauth2
+      description: OAuth2 authorization-code flow (PKCE supported) against the Wego auth server.
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.wego.com/user-auth/v2/users/oauth/authorize
+          tokenUrl: https://auth.wego.com/user-auth/v2/users/oauth/token
+          x-scalar-client-id: 251815b9647317f4895122fd4924b7d44541d8fcc27be528435e3ad9bbf7e1ee
+          x-usePkce: SHA-256
+          scopes:
+            openid: OpenID Connect sign-in.
+            profile: Basic profile claims.
+            users: User identity for the API.
+      x-default-scopes:
+      - openid
+      - profile
+      - users

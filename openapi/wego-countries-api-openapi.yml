@@ -1,0 +1,359 @@
+openapi: 3.2.0
+info:
+  title: Wego Countries API
+  description: 'Wego''s travel API: places, flights, hotels and fares. Please see https://docs.wego.com for more details.'
+  version: 0.19.0
+servers:
+- url: https://api.wego.com
+security:
+- oauth2: []
+- bearerAuth: []
+tags:
+- name: Countries
+  description: Country-keyed reference data an agent can call before any search, and combine.
+paths:
+  /v1/countries/{countryCode}/holidays:
+    get:
+      operationId: getCountryHolidays
+      tags:
+      - Countries
+      summary: Public holidays for a market
+      description: Public holidays in one Wego market over a date range, for spotting long weekends before searching flights. Give both fromDate and toDate, or neither – omit both and the API searches the next 90 days and says so in metadata.window/from/to.
+      responses:
+        '200':
+          description: Holidays in the searched range, plus that range.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          description: Localized holiday name.
+                        key:
+                          type: string
+                          description: Stable upstream slug (e.g. national_day) – the same holiday carries the same key across locales.
+                        startDate:
+                          type: string
+                          description: Inclusive ISO YYYY-MM-DD start.
+                        endDate:
+                          type: string
+                          description: Inclusive ISO YYYY-MM-DD end; equals startDate for one-day holidays.
+                      required:
+                      - name
+                      - key
+                      - startDate
+                      - endDate
+                    description: Public holidays in the resolved window.
+                  metadata:
+                    type: object
+                    properties:
+                      resultCount:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: Number of holidays returned.
+                      countryCode:
+                        type: string
+                        description: The market the holidays are for.
+                      window:
+                        type: string
+                        enum:
+                        - explicit
+                        - upcoming
+                        description: '`explicit` when the caller supplied both dates, `upcoming` when the API chose the range (stated in from/to).'
+                      from:
+                        type: string
+                        description: Inclusive ISO start of the range actually searched.
+                      to:
+                        type: string
+                        description: Inclusive ISO end of the range actually searched.
+                    required:
+                    - resultCount
+                    - countryCode
+                    - window
+                    - from
+                    - to
+                    description: The market, the resolved date window, and the result count for this read.
+                required:
+                - results
+                - metadata
+        '400':
+          description: Unknown market, malformed date, only one of fromDate/toDate, or fromDate after toDate.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: The upstream holidays service returned an invalid response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The holidays service is temporarily unavailable; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - in: path
+        name: countryCode
+        schema:
+          type: string
+          pattern: ^[A-Z]{2}$
+          example: AE
+        required: true
+        description: 'ISO 3166-1 alpha-2 code of the Wego market whose public holidays you want (e.g. AE). A destination MARKET, not a passport: it must be one of Wego''s markets, and an unknown one is rejected 400. The same path segment means a passport on the visa-free route.'
+      - in: query
+        name: fromDate
+        schema:
+          type: string
+          pattern: ^\d{4}-\d{2}-\d{2}$
+        description: Inclusive ISO start date. Give both fromDate and toDate, or neither.
+      - in: query
+        name: toDate
+        schema:
+          type: string
+          pattern: ^\d{4}-\d{2}-\d{2}$
+        description: Inclusive ISO end date. Give both fromDate and toDate, or neither.
+      - in: query
+        name: locale
+        schema:
+          default: en
+          type: string
+          minLength: 1
+          maxLength: 35
+        description: Locale for localized names (e.g. en, ar). Defaults to en.
+  /v1/countries/{countryCode}/visa-free-destinations:
+    get:
+      operationId: getVisaFreeDestinations
+      tags:
+      - Countries
+      summary: Visa-free destinations for a passport
+      description: 'Where a passport can travel without a visa, as one complete list (the API walks the upstream''s pages). An inspiration list, not a visa rule: it carries no visa type and no permitted stay, and a country''s absence means absent from Wego''s list, never that a visa is required.'
+      responses:
+        '200':
+          description: Visa-free destinations for this passport, keyed on countryCode for joining.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        countryCode:
+                          type: string
+                          description: ISO 3166-1 alpha-2 code – the key to join this list on.
+                        name:
+                          type: string
+                          description: Localized country name.
+                        keyCityCode:
+                          description: The country's principal city code, ready for a flight search.
+                          type: string
+                        currencyCode:
+                          description: The destination's ISO 4217 currency code, when known.
+                          type: string
+                        latitude:
+                          description: Latitude of the destination's principal city, when known.
+                          type: number
+                        longitude:
+                          description: Longitude of the destination's principal city, when known.
+                          type: number
+                      required:
+                      - countryCode
+                      - name
+                    description: Visa-free destinations for the passport.
+                  metadata:
+                    type: object
+                    properties:
+                      resultCount:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: Number of destinations on the current page.
+                      totalCandidates:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: Destinations assembled across every upstream page, pre-pagination. 0 means Wego lists none for this passport – NOT that a visa is required.
+                      hasMore:
+                        type: boolean
+                        description: True when a further page exists.
+                      passportCountryCode:
+                        type: string
+                        description: The passport the list is for.
+                      upstreamPagesFetched:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: How many upstream pages were read to assemble this list.
+                      coverage:
+                        type: string
+                        enum:
+                        - complete
+                        - truncated
+                        description: '`complete` when the walk ended on a short upstream page. `truncated` when the page cap stopped it on a full page, so totalCandidates is a FLOOR and destinations may exist that this response does not carry. At exactly the cap (200) a complete list also reports `truncated`, since telling the two apart would cost another upstream page.'
+                    required:
+                    - resultCount
+                    - totalCandidates
+                    - hasMore
+                    - passportCountryCode
+                    - upstreamPagesFetched
+                    - coverage
+                    description: The passport, the walk's coverage, and the counts for this read.
+                required:
+                - results
+                - metadata
+        '400':
+          description: Malformed passport country code, page or pageSize.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: The upstream destinations service returned an invalid response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The destinations service is temporarily unavailable; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - in: path
+        name: countryCode
+        schema:
+          type: string
+          pattern: ^[A-Z]{2}$
+          example: AE
+        required: true
+        description: 'ISO 3166-1 alpha-2 code of the PASSPORT whose visa-free destinations you want (e.g. AE). A passport, not a market: any well-formed code is accepted (a passport need not be a Wego market) and an unrecognized one returns an honest empty list. The same path segment means a market on the holidays route.'
+      - in: query
+        name: locale
+        schema:
+          default: en
+          type: string
+          minLength: 1
+          maxLength: 35
+        description: Locale for localized names (e.g. en, ar). Defaults to en.
+      - in: query
+        name: page
+        schema:
+          default: 1
+          type: integer
+          minimum: 1
+          maximum: 20
+        description: Page number, 1-based (max 20). Defaults to 1. The list is a bounded registry the API assembles whole, so paging is rarely needed and the cap is low by design.
+      - in: query
+        name: pageSize
+        schema:
+          default: 200
+          type: integer
+          minimum: 1
+          maximum: 200
+        description: 'Rows per page (1-200). Defaults to 200, which is also the maximum: this is a bounded registry the API walks completely, so the default returns the whole list. pageSize exists only to narrow a long answer, never to force paging.'
+components:
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details, served as application/problem+json.
+      required:
+      - type
+      - title
+      - status
+      - instance
+      - code
+      - trace_id
+      properties:
+        type:
+          type: string
+          format: uri
+          description: Problem-type URI. `about:blank` for now (no semantics beyond the status); real type URIs follow once the public host is fixed.
+        title:
+          type: string
+          description: Fixed human summary, the same across a `code`.
+        status:
+          type: integer
+          description: The HTTP status code, repeated as a JSON number.
+        detail:
+          type: string
+          description: Instance-specific human explanation of this failure.
+        instance:
+          type: string
+          description: The request path this occurrence happened on.
+        code:
+          type: string
+          enum:
+          - validation_failed
+          - invalid_token
+          - insufficient_scope
+          - not_found
+          - rates_require_hotel_search
+          - rate_limited
+          - bad_gateway
+          - upstream_unavailable
+          - upstream_rate_limited
+          - internal_error
+          description: Stable machine token from a closed enum – the field an agent branches on.
+        trace_id:
+          type: string
+          description: Correlates this response to its logs; also returned in the `x-trace-id` response header.
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'Wego auth server access token, sent as `Authorization: Bearer <token>` (RFC 6750).'
+    oauth2:
+      type: oauth2
+      description: OAuth2 authorization-code flow (PKCE supported) against the Wego auth server.
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.wego.com/user-auth/v2/users/oauth/authorize
+          tokenUrl: https://auth.wego.com/user-auth/v2/users/oauth/token
+          x-scalar-client-id: 251815b9647317f4895122fd4924b7d44541d8fcc27be528435e3ad9bbf7e1ee
+          x-usePkce: SHA-256
+          scopes:
+            openid: OpenID Connect sign-in.
+            profile: Basic profile claims.
+            users: User identity for the API.
+      x-default-scopes:
+      - openid
+      - profile
+      - users

@@ -1,0 +1,2969 @@
+openapi: 3.2.0
+info:
+  title: Wego Flights API
+  description: 'Wego''s travel API: places, flights, hotels and fares. Please see https://docs.wego.com for more details.'
+  version: 0.19.0
+servers:
+- url: https://api.wego.com
+security:
+- oauth2: []
+- bearerAuth: []
+tags:
+- name: Flights
+  description: 'The flight funnel: `createFlightSearch` starts an async search, `getFlightSearchResults` reads ranked snapshots while providers answer, `getFlightTrip` opens one trip with every fare. Fares with `kind: "wego"` continue into `getFareOptions` and `getFareBookingLink`; airline and partner fares carry their own handoff URL instead. Ids expire; a `404` means search again. `getFlightSchedules` sits outside the funnel – a published timetable with no prices and no search to settle.'
+paths:
+  /v1/flights/searches:
+    post:
+      operationId: createFlightSearch
+      tags:
+      - Flights
+      summary: Create a flight search
+      description: Creates a metasearch for the given route/dates/passengers and returns its searchId. Results accrue asynchronously – poll getFlightSearchResults with the returned searchId to read ranked trips.
+      responses:
+        '201':
+          description: Search created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  searchId:
+                    type: string
+                    description: The id of the created search; pass it to the results and trip reads.
+                  siteCode:
+                    type: string
+                    description: The site code (Wego market) the search was created for.
+                  siteCodeSource:
+                    type: string
+                    enum:
+                    - explicit
+                    - default
+                    description: 'How the API resolved siteCode: explicit (caller-supplied – including a market a client derived and passed) or default (US, no site supplied).'
+                required:
+                - searchId
+                - siteCode
+                - siteCodeSource
+                description: The created search id and the market it was created for.
+        '400':
+          description: Invalid request body/query/path parameters.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: The upstream flights service returned an invalid response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The flights service is temporarily unavailable (`upstream_unavailable`) or rate-limited upstream (`upstream_rate_limited`); retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                from:
+                  type: string
+                  pattern: ^[A-Z]{3}$
+                  example: DXB
+                  description: Origin airport or city IATA code, e.g. DXB.
+                to:
+                  type: string
+                  pattern: ^[A-Z]{3}$
+                  example: LHR
+                  description: Destination airport or city IATA code, e.g. LHR.
+                fromDate:
+                  type: string
+                  pattern: ^\d{4}-\d{2}-\d{2}$
+                  description: Outbound departure date, YYYY-MM-DD. Not in the past, within a year.
+                toDate:
+                  type: string
+                  pattern: ^\d{4}-\d{2}-\d{2}$
+                  description: Return date, YYYY-MM-DD. Omit for a one-way search.
+                cabin:
+                  default: economy
+                  description: Cabin class requested for all passengers.
+                  type: string
+                  enum:
+                  - economy
+                  - premium_economy
+                  - business
+                  - first
+                adults:
+                  default: 1
+                  description: Adult passengers (1-9). Defaults to 1. Note the hotel search defaults adults to 2, since a room sleeps two.
+                  type: integer
+                  minimum: 1
+                  maximum: 9
+                children:
+                  default: 0
+                  description: Child passengers (0-8). Defaults to 0.
+                  type: integer
+                  minimum: 0
+                  maximum: 8
+                infants:
+                  default: 0
+                  description: Infant passengers (0-8). Must not exceed adults. Defaults to 0.
+                  type: integer
+                  minimum: 0
+                  maximum: 8
+                currency:
+                  default: USD
+                  description: Pricing currency as a 3-letter ISO 4217 code. Defaults to USD.
+                  type: string
+                  pattern: ^[A-Z]{3}$
+                locale:
+                  default: en
+                  description: Response language tag (e.g. en, ar). Defaults to en.
+                  type: string
+                  minLength: 1
+                  maxLength: 35
+                siteCode:
+                  type: string
+                  pattern: ^[A-Z]{2}$
+                  description: 'Wego market (point of sale) as a 2-letter code, e.g. AE. Optional: if omitted the API defaults to US. A client that knows the user''s market (the wego CLI derives it from the id_token) passes it as an explicit siteCode; the response always reports the siteCode used.'
+              required:
+              - from
+              - to
+              - fromDate
+              additionalProperties: false
+  /v1/flights/schedules:
+    get:
+      operationId: getFlightSchedules
+      tags:
+      - Flights
+      summary: Published timetable for a route
+      description: What actually flies a route – times, duration, aircraft, and the weekdays each flight runs – with no prices and no search to settle. Nonstop flights only. Airport codes resolve to their parent city (LHR to LON), and metadata echoes what each side resolved to.
+      responses:
+        '200':
+          description: Scheduled flights, plus the resolved route and the market used.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        airlineCode:
+                          type: string
+                          description: Marketing carrier code – what `airline` filters on.
+                        departureAirportCode:
+                          type: string
+                          description: Departure airport IATA code.
+                        arrivalAirportCode:
+                          type: string
+                          description: Arrival airport IATA code.
+                        departureTime:
+                          type: string
+                          description: Local HH:MM at the departure airport.
+                        arrivalTime:
+                          type: string
+                          description: Local HH:MM at the arrival airport.
+                        durationMinutes:
+                          type: number
+                          description: Total scheduled duration in minutes.
+                        stopsCount:
+                          type: number
+                          description: Stops on the route, as the timetable reports them; 0 is nonstop. This read covers nonstop scheduled flights, so a connecting itinerary is absent rather than listed with a stop.
+                        arrivalDayOffset:
+                          type: number
+                          description: Days the arrival falls after departure; 1 means next-day.
+                        segments:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              departureAirportCode:
+                                type: string
+                                description: Departure airport IATA code.
+                              arrivalAirportCode:
+                                type: string
+                                description: Arrival airport IATA code.
+                              departureTime:
+                                type: string
+                                description: Local HH:MM at the departure airport.
+                              arrivalTime:
+                                type: string
+                                description: Local HH:MM at the arrival airport.
+                              airlineCode:
+                                type: string
+                                description: Marketing carrier IATA code.
+                              airlineName:
+                                description: Marketing carrier display name, when resolved.
+                                type: string
+                              durationMinutes:
+                                description: Segment duration in minutes, when reported.
+                                type: number
+                              flightNumber:
+                                description: The marketed designator, e.g. `TR 610`.
+                                type: string
+                              aircraftCode:
+                                description: Aircraft type code, when reported.
+                                type: string
+                              aircraftName:
+                                description: Aircraft type name, when reported.
+                                type: string
+                            required:
+                            - departureAirportCode
+                            - arrivalAirportCode
+                            - departureTime
+                            - arrivalTime
+                            - airlineCode
+                          description: The individual flights that make up this schedule.
+                        operatingPeriods:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              weekdays:
+                                description: Days of the week the flight operates, 1 Monday to 7 Sunday. Absent means the upstream published no recurrence for this period.
+                                type: array
+                                items:
+                                  type: integer
+                                  minimum: 1
+                                  maximum: 7
+                              startDate:
+                                description: First date this recurrence is published for, as YYYY-MM-DD.
+                                type: string
+                              endDate:
+                                description: Last date this recurrence is published for, as YYYY-MM-DD.
+                                type: string
+                            description: 'A published operating period: which weekdays the flight runs, and the date window that applies to.'
+                          description: When this flight runs – one entry per published operating period. Empty when the upstream states no recurrence, which means unknown, never daily.
+                        flightNumber:
+                          description: The marketed designator, present on a single-segment schedule.
+                          type: string
+                        aircraftCode:
+                          description: Aircraft type code, when reported.
+                          type: string
+                      required:
+                      - airlineCode
+                      - departureAirportCode
+                      - arrivalAirportCode
+                      - departureTime
+                      - arrivalTime
+                      - durationMinutes
+                      - stopsCount
+                      - arrivalDayOffset
+                      - segments
+                      - operatingPeriods
+                    description: The scheduled flights for this route, a timetable with no prices.
+                  metadata:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                        minimum: 1
+                        maximum: 9007199254740991
+                        description: The 1-based page returned.
+                      pageSize:
+                        type: integer
+                        minimum: 1
+                        maximum: 9007199254740991
+                        description: Rows requested per page.
+                      resultCount:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: Scheduled flights on this page (always <= pageSize).
+                      totalCandidates:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: Scheduled flights the upstream held for this route, pre-pagination – the ceiling paging can reach. 0 means the upstream publishes no timetable for this route, NOT that nothing flies it.
+                      hasMore:
+                        type: boolean
+                        description: True when a further page exists.
+                      coverage:
+                        type: string
+                        enum:
+                        - complete
+                        - truncated
+                        description: complete when the upstream returned its whole set for this route, truncated when it filled the API's upstream ceiling and may hold more. While truncated, read totalCandidates as a floor rather than a total.
+                      from:
+                        type: object
+                        properties:
+                          requested:
+                            type: string
+                            description: Exactly what the caller sent, uppercased.
+                          resolvedCityCode:
+                            type: string
+                            description: The city code sent upstream – LHR resolves to LON.
+                        required:
+                        - requested
+                        - resolvedCityCode
+                        description: 'Departure route endpoint: what the caller sent and the city code it resolved to.'
+                      to:
+                        type: object
+                        properties:
+                          requested:
+                            type: string
+                            description: Exactly what the caller sent, uppercased.
+                          resolvedCityCode:
+                            type: string
+                            description: The city code sent upstream – LHR resolves to LON.
+                        required:
+                        - requested
+                        - resolvedCityCode
+                        description: 'Arrival route endpoint: what the caller sent and the city code it resolved to.'
+                      siteCode:
+                        type: string
+                        description: The market this request resolved to, as a 2-letter code. Echoed for consistency with the priced reads – a published timetable does not vary by market, so it does not change these rows.
+                      siteCodeSource:
+                        type: string
+                        enum:
+                        - explicit
+                        - default
+                        description: explicit when the caller supplied siteCode, default when the API applied the US floor.
+                    required:
+                    - page
+                    - pageSize
+                    - resultCount
+                    - totalCandidates
+                    - hasMore
+                    - coverage
+                    - from
+                    - to
+                    - siteCode
+                    - siteCodeSource
+                    description: The page returned, how much the upstream held, the resolved route endpoints, and the market echoed.
+                required:
+                - results
+                - metadata
+        '400':
+          description: Malformed code, a code that resolves to no city, or a page or pageSize outside its range – an out-of-range paging value is rejected, never clamped.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: The upstream schedules service returned an invalid response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The schedules service is temporarily unavailable (`upstream_unavailable`) or rate-limited upstream (`upstream_rate_limited`); retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - in: query
+        name: from
+        schema:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: DXB
+        required: true
+        description: Departure city or airport code; an airport resolves to its city.
+      - in: query
+        name: to
+        schema:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: LHR
+        required: true
+        description: Arrival city or airport code; an airport resolves to its city.
+      - in: query
+        name: airline
+        schema:
+          type: string
+          pattern: ^[A-Z0-9]{2}$
+        description: Filter to one marketing carrier (e.g. SQ).
+      - in: query
+        name: siteCode
+        schema:
+          type: string
+          pattern: ^[A-Z]{2}$
+        description: Wego market as a 2-letter code. Omitted, the API defaults to US and says so in metadata.siteCodeSource.
+      - in: query
+        name: locale
+        schema:
+          default: en
+          type: string
+          minLength: 1
+          maxLength: 35
+          example: en
+        description: Response language tag.
+      - in: query
+        name: page
+        schema:
+          default: 1
+          type: integer
+          minimum: 1
+          maximum: 20
+        description: Page number, 1-based (max 20). Defaults to 1. A timetable is a bounded list the API reads whole, so paging is rarely needed and the cap is low by design.
+      - in: query
+        name: pageSize
+        schema:
+          default: 200
+          type: integer
+          minimum: 1
+          maximum: 200
+        description: Rows per page (1-200). Defaults to 200, which is also the maximum, so most routes return whole on one page. A busier route exceeds it and says so with hasMore. pageSize exists to narrow a long answer, never to force paging.
+  /v1/flights/searches/{searchId}/results:
+    get:
+      operationId: getFlightSearchResults
+      tags:
+      - Flights
+      summary: Read ranked flight results
+      description: 'Ranked trips as lean list cards (default 10, max 50 per page; out-of-range rejected 400), filters + sort applied. No completion flag: re-read (300ms→3s) until snapshotFareCount holds steady across two reads AND snapshotTripCount > 0. No fares[] on a card – read the trip for fares.'
+      responses:
+        '200':
+          description: The current ranked-trip snapshot, as list cards.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  searchId:
+                    type: string
+                    description: The id of the search this snapshot belongs to.
+                  currencyCode:
+                    type: string
+                    description: The currency the prices in this snapshot actually came back in, read off the fares themselves – so this, not metadata.currencyCode, is what a displayed number is denominated in. metadata.currencyCode reports what the read asked for and carries currencyCodeSource beside it; the two agree unless upstream declined to reprice into the requested currency.
+                  metadata:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                        minimum: 1
+                        maximum: 9007199254740991
+                        description: 1-based page number of this snapshot.
+                      pageSize:
+                        type: integer
+                        minimum: 1
+                        maximum: 9007199254740991
+                        description: Trips requested per page.
+                      resultCount:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: Trips on this page. The page only – judge a filter on totalCandidates, not this.
+                      totalCandidates:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: 'Trips matching this read''s filters across the whole snapshot – the count that judges a filter, never the page (results). Flights have no completion flag: settle on snapshotFareCount steady across two reads with snapshotTripCount above 0.'
+                      hasMore:
+                        type: boolean
+                        description: Another page of trips follows.
+                      filterOptions:
+                        type: object
+                        properties:
+                          alliances:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                code:
+                                  type: string
+                                  description: The code the matching filter query param accepts.
+                                name:
+                                  description: Display label for the code, when the snapshot dictionary resolves one.
+                                  type: string
+                                count:
+                                  type: integer
+                                  minimum: 0
+                                  maximum: 9007199254740991
+                                  description: Trips carrying this value, deduped per trip and matched on any leg.
+                              required:
+                              - code
+                              - count
+                            description: Alliance codes present in this snapshot, by descending count.
+                          airlines:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                code:
+                                  type: string
+                                  description: The code the matching filter query param accepts.
+                                name:
+                                  description: Display label for the code, when the snapshot dictionary resolves one.
+                                  type: string
+                                count:
+                                  type: integer
+                                  minimum: 0
+                                  maximum: 9007199254740991
+                                  description: Trips carrying this value, deduped per trip and matched on any leg.
+                              required:
+                              - code
+                              - count
+                            description: Airline codes present in this snapshot, by descending count.
+                          bookingSites:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                code:
+                                  type: string
+                                  description: The code the matching filter query param accepts.
+                                name:
+                                  description: Display label for the code, when the snapshot dictionary resolves one.
+                                  type: string
+                                count:
+                                  type: integer
+                                  minimum: 0
+                                  maximum: 9007199254740991
+                                  description: Trips carrying this value, deduped per trip and matched on any leg.
+                              required:
+                              - code
+                              - count
+                            description: Booking provider codes present in this snapshot, by descending count.
+                          stopoverAirports:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                code:
+                                  type: string
+                                  description: The code the matching filter query param accepts.
+                                name:
+                                  description: Display label for the code, when the snapshot dictionary resolves one.
+                                  type: string
+                                count:
+                                  type: integer
+                                  minimum: 0
+                                  maximum: 9007199254740991
+                                  description: Trips carrying this value, deduped per trip and matched on any leg.
+                              required:
+                              - code
+                              - count
+                            description: Stopover airport codes present in this snapshot, by descending count.
+                          aircraft:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                code:
+                                  type: string
+                                  description: The code the matching filter query param accepts.
+                                name:
+                                  description: Display label for the code, when the snapshot dictionary resolves one.
+                                  type: string
+                                count:
+                                  type: integer
+                                  minimum: 0
+                                  maximum: 9007199254740991
+                                  description: Trips carrying this value, deduped per trip and matched on any leg.
+                              required:
+                              - code
+                              - count
+                            description: 'Aircraft type codes present in this snapshot, by descending count. name is the display label the results card publishes (A380, A320 Neo), and is NOT unique: several codes can carry the same label, so filter on code. Includes any non-aircraft equipment upstream reports on a leg, such as BUS for a surface segment.'
+                          stopoverDurations:
+                            description: 'The layover span this snapshot carries, in minutes, measured the way min-stopover-duration and max-stopover-duration are judged: per trip, the LARGEST leg total across its legs. Use it to bound a slider. Both ends are reachable - sending the published min or max with no other filter keeps at least the trip that set it. min is 0 whenever the snapshot holds one direct trip, which is the usual case. A range, not a count list, so it has no name or count. Absent when nothing here is measurable: an empty snapshot, or one where every trip carries a connecting leg whose layover upstream never stated.'
+                            type: object
+                            properties:
+                              min:
+                                type: number
+                                minimum: 0
+                                description: Shortest layover any trip in this snapshot carries, in minutes. 0 whenever one trip is direct. Echoes the upstream figure, so it is a whole number of minutes wherever upstream states one.
+                              max:
+                                type: number
+                                minimum: 0
+                                description: Longest layover any trip in this snapshot carries, in minutes.
+                            required:
+                            - min
+                            - max
+                        required:
+                        - alliances
+                        - airlines
+                        - bookingSites
+                        - stopoverAirports
+                        - aircraft
+                        description: 'The filter values this snapshot actually carries, ordered by count, over the same trips as snapshotTripCount. Codes are what the matching query param accepts, so pick from here rather than guessing: sending one listed code with no other filter makes metadata.totalCandidates equal that count exactly. It does NOT bound results, which stays the requested page, so compare against totalCandidates and not resultCount. Counts assume the default matching, so airlines-match=all or same-airline=true can keep fewer trips than the airlines count promises. count is trips, not legs or fares, and a trip is counted once however many of its legs or fares carry the value, including when only its return leg does. name is the display label: always present on bookingSites, where the provider code is its own fallback, present on airlines and stopoverAirports only when the snapshot dictionary resolves the code, and never present on alliances, which upstream gives no label. Still growing while the search aggregates, so judge an ABSENT code only once snapshotFareCount holds steady across two reads.'
+                      snapshotTripCount:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: Renderable trips before filter/sort/page. 0 means upstream has produced none yet; above 0 beside an empty `results` means a filter or page range excluded everything. Settling needs `snapshotFareCount` steady across two reads AND this above 0.
+                      snapshotFareCount:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: Upstream progress counter, for cross-read comparison only. Runs ahead of the fares returned and stays non-zero over an empty page, so read `resultCount`/`totalCandidates` for display. Settled = equal non-zero across two reads with `snapshotTripCount` above 0.
+                      createdAt:
+                        description: When the upstream search was created (ISO 8601) – the freshness anchor for these prices. Absent when upstream omits it.
+                        type: string
+                      currencyCode:
+                        type: string
+                        description: 'The currency this read ASKED upstream for, and the one every price on it is meant to be in. Read it beside currencyCodeSource before you show a number: a price computed in the wrong currency renders as a perfectly normal price, with no error and no odd shape to notice, so the response states which one rather than leaving it to be inferred. Where the operation also publishes a top-level currencyCode, that field reports the currency the prices actually came back in; the two agree unless upstream declined to reprice.'
+                      currencyCodeSource:
+                        type: string
+                        enum:
+                        - explicit
+                        - default
+                        description: 'How the API resolved currencyCode: explicit (the caller sent currency – including a value equal to the default) or default (USD, no currency sent). A default here is the one signal that the request never carried the currency you meant.'
+                      locale:
+                        type: string
+                        description: The language tag this read asked upstream for – what any localized text on it was resolved in (room and board names, airline and airport names, review prose).
+                      localeSource:
+                        type: string
+                        enum:
+                        - explicit
+                        - default
+                        description: 'How the API resolved locale: explicit (the caller sent locale – including a value equal to the default) or default (en, no locale sent). A default here explains text that came back in a language the caller did not ask for.'
+                    required:
+                    - page
+                    - pageSize
+                    - resultCount
+                    - totalCandidates
+                    - hasMore
+                    - filterOptions
+                    - snapshotTripCount
+                    - snapshotFareCount
+                    - currencyCode
+                    - currencyCodeSource
+                    - locale
+                    - localeSource
+                    description: Pagination, the snapshot's filter vocabulary, the settle counters for this read, and what it resolved currency and locale to.
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        tripId:
+                          type: string
+                          description: Opaque trip id; read it back with GET /v1/flights/trips/{tripId}.
+                        badges:
+                          type: array
+                          items:
+                            type: string
+                            enum:
+                            - best_value
+                            - cheapest
+                            - cheapest_direct
+                          description: Every featured label that fits this trip. best_value ranks on the score of the trip's CHEAPEST fare, the same statistic sort=score_desc orders by; cheapest and cheapest_direct break a price tie by that score, then by leg-1 departure – cheapest keeps the LATER departure, cheapest_direct the EARLIER one.
+                        stops:
+                          type: number
+                          description: Trip-level stop count – the MAX across legs, the same value ?stops= filters on. Do not fold legs[] yourself.
+                        durationMinutes:
+                          type: number
+                          description: Trip-level duration – the SUM across legs.
+                        price:
+                          type: object
+                          properties:
+                            total:
+                              type: number
+                              description: The cheapest fare's whole-party total (upstream totalAmount), including payment + booking fees.
+                            currency:
+                              type: string
+                              description: ISO 4217 currency of total.
+                            scope:
+                              type: string
+                              const: party
+                              description: total covers the whole party (adults + children + infants), not per-person.
+                            websiteCount:
+                              type: integer
+                              minimum: 0
+                              maximum: 9007199254740991
+                              description: How many providers/fares sell this trip ("from 11 websites").
+                            hasWegoFare:
+                              type: boolean
+                              description: Whether any of the trip's fares is a Book-on-Wego fare.
+                          required:
+                          - total
+                          - currency
+                          - scope
+                          - websiteCount
+                          - hasWegoFare
+                          description: Card price summary – the cheapest whole-party total, fee-inclusive; scope names the (party) figure.
+                        legs:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              from:
+                                type: string
+                                description: Departure airport IATA code.
+                              to:
+                                type: string
+                                description: Arrival airport IATA code.
+                              departsAt:
+                                type: string
+                                description: Leg departure, ISO 8601 with offset.
+                              arrivesAt:
+                                type: string
+                                description: Leg arrival, ISO 8601 with offset.
+                              arrivalDayOffset:
+                                type: number
+                                description: Calendar days the arrival lands after departure (the +1 badge).
+                              overnight:
+                                type: boolean
+                                description: The leg spans a night.
+                              durationMinutes:
+                                type: number
+                                description: Leg duration in minutes.
+                              stops:
+                                type: number
+                                description: Stops on this leg (0 is nonstop).
+                              via:
+                                type: array
+                                items:
+                                  type: string
+                                description: Stopover airport codes ("via KUL"); empty for a direct leg.
+                              layoverMinutesByStop:
+                                description: Layover minutes per connection, index-aligned to via, so layoverMinutesByStop[i] is the wait at via[i]. Absent on a direct leg, and absent on a leg whose upstream segment list does not line up with via, where publishing it could pair a wait with the wrong airport. Named apart from the trip read's legs[].layoverMinutes, which is a single leg TOTAL rather than a per-connection list. Sums to the leg total that min-stopover-duration and max-stopover-duration are judged against; those params bound the LARGEST leg total across the trip's legs, not an individual connection, so a trip kept by max-stopover-duration can still carry one long wait among several short ones.
+                                type: array
+                                items:
+                                  type: number
+                              airlines:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    code:
+                                      type: string
+                                      description: IATA airline code.
+                                    name:
+                                      type: string
+                                      description: Airline display name.
+                                    logoUrl:
+                                      type: string
+                                      description: Airline logo URL; may 404, fall back to the name.
+                                  required:
+                                  - code
+                                  - name
+                                  - logoUrl
+                                  description: An airline resolved to code, name and logo.
+                                description: Marketing airlines on the leg, resolved to code, name and logo.
+                              operatingAirlines:
+                                description: 'Carriers that fly a segment of this leg they do not market. airlines names the MARKETING carriers only, so on a leg sold by one airline every code here is a carrier absent from the ticket; on an interline leg sold by two, one of these may also market a different segment. Read this before telling a traveller who they fly. This card carries no segments[], so read the trip for which flight each one operates. PRESENT ONLY WHEN A SEGMENT PROVES A CODESHARE: absent means none was proven on this leg, never a promise that the marketing carrier operates every segment.'
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    code:
+                                      type: string
+                                      description: IATA airline code.
+                                    name:
+                                      type: string
+                                      description: Airline display name.
+                                    logoUrl:
+                                      type: string
+                                      description: Airline logo URL; may 404, fall back to the name.
+                                  required:
+                                  - code
+                                  - name
+                                  - logoUrl
+                                  description: An airline resolved to code, name and logo.
+                              aircraft:
+                                type: array
+                                items:
+                                  type: string
+                                description: 'Distinct aircraft short names across the leg ("A330","B787"). Equipment only: a surface segment does show up here as its equipment label ("Bus"), but transportTypes is the field that states the mode.'
+                              transportTypes:
+                                minItems: 1
+                                type: array
+                                items:
+                                  type: string
+                                  enum:
+                                  - FLIGHT
+                                  - TRAIN
+                                  - BUS
+                                  - OTHER
+                                  description: How this segment travels. FLIGHT is a plane. TRAIN and BUS are surface segments sold under a flight number, which airlines do publish, for example the Etihad coach between Dubai Bus Station and Abu Dhabi. OTHER is a mode upstream states that this API does not model, and is never a flight. Absent upstream is published as FLIGHT, which is what every segment meant before this field existed.
+                                description: 'Distinct transport modes across this leg''s segments, in segment order. Always present and never empty: an all-flight leg reads ["FLIGHT"]. This card carries no segments[], so anything else here means read the trip to see which segment is not a plane before you quote the leg as a flight.'
+                            required:
+                            - from
+                            - to
+                            - departsAt
+                            - arrivesAt
+                            - arrivalDayOffset
+                            - overnight
+                            - durationMinutes
+                            - stops
+                            - via
+                            - airlines
+                            - aircraft
+                            - transportTypes
+                          description: Per-leg summary for this trip, outbound first then return.
+                      required:
+                      - tripId
+                      - badges
+                      - stops
+                      - durationMinutes
+                      - price
+                      - legs
+                      description: 'One results-list trip: a price summary + per-leg summary, no fares[]. Read GET /v1/flights/trips/{tripId} for this trip''s fares, fare ids and per-flight segments.'
+                    description: The requested page of ranked trips, as list cards.
+                required:
+                - searchId
+                - currencyCode
+                - metadata
+                - results
+                description: A paginated snapshot of ranked trips as lean list cards.
+        '400':
+          description: Invalid request body/query/path parameters.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Unknown or expired search.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: The upstream flights service returned an invalid response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The flights service is temporarily unavailable (`upstream_unavailable`) or rate-limited upstream (`upstream_rate_limited`); retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - in: path
+        name: searchId
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9._:~=-]{1,256}$
+        required: true
+        description: The opaque searchId returned by createFlightSearch. Ids expire (a few minutes); a 404 means the search is gone – create a new one.
+      - in: query
+        name: page
+        schema:
+          default: 1
+          type: integer
+          minimum: 1
+          maximum: 100
+        description: Page number, 1-based (max 100).
+      - in: query
+        name: pageSize
+        schema:
+          default: 10
+          type: integer
+          minimum: 1
+          maximum: 50
+        description: Results per page (default 10, max 50); out-of-range values are rejected with 400, never clamped.
+      - in: query
+        name: sort
+        schema:
+          default: score_desc
+          type: string
+          enum:
+          - score_desc
+          - price_asc
+          - duration_asc
+          - leg1_departure_time_asc
+          - leg1_departure_time_desc
+          - leg2_departure_time_asc
+          - leg2_departure_time_desc
+        description: Sort mode; score_desc (default) ranks by the metasearch score, the leg1/leg2 modes sort by that leg's local departure time.
+      - in: query
+        name: airlines
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+        description: Airline IATA codes, repeat or comma-separate (e.g. ?airlines=SQ,TR). Values are OR'd together; by default a trip matches if ANY leg (outbound or return) carries any listed airline, not a trip-wide AND. Pass airlines-match=all for the trip-wide AND that wego.com applies.
+      - in: query
+        name: airlines-match
+        schema:
+          type: string
+          enum:
+          - any
+          - all
+        description: How the airlines list is matched across a trip's legs. 'any' (the default) keeps a trip when ANY leg carries a listed airline. 'all' requires EVERY leg to, which is what wego.com does, so a Saudia-out / Emirates-back trip is dropped under ?airlines=EK. A leg marketed by two carriers still passes when one of them is listed, so add same-airline=true to require a single carrier as well. Ignored when airlines is absent.
+      - in: query
+        name: same-airline
+        schema:
+          type: string
+          enum:
+          - '0'
+          - '1'
+          - 'true'
+          - 'false'
+        description: 'Keep only trips where every leg is marketed by exactly ONE airline and it is the same airline on every leg, so an interline or self-transfer leg marketed by two carriers is dropped. Matches the MARKETING carrier only: a codeshare, where one airline sells a flight another operates, is NOT excluded, because wego.com''s ''same airline for the complete trip'' does not exclude it either. Independent of airlines, so it works on its own; combine the two to mean ''only SQ, on every leg''.'
+      - in: query
+        name: alliances
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+        description: Alliance codes, repeat or comma-separate. OR'd together; a trip matches if ANY leg (outbound or return) belongs to any listed alliance. Case-insensitive. NOT a fixed set – read metadata.filterOptions.alliances for this snapshot's own values, which include upstream groupings that are not strictly alliances (lcc for low-cost carriers, value_alliance). An unknown code matches nothing rather than failing the request.
+      - in: query
+        name: stops
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: integer
+            minimum: 0
+            maximum: 9007199254740991
+        description: Stop counts, repeat or comma-separate (e.g. ?stops=0,1). OR'd together; matched against the trip-level stop count (the MAX across legs, i.e. the value the response's stops field exposes) – not a per-leg check, so a mixed-stop round trip (e.g. a direct outbound + a 1-stop return) is kept under ?stops=1.
+      - in: query
+        name: min-price
+        schema:
+          type: number
+          minimum: 0
+        description: Minimum cheapest-fare total price (inclusive), in the response currency.
+      - in: query
+        name: max-price
+        schema:
+          type: number
+          minimum: 0
+        description: Maximum cheapest-fare total price (inclusive), in the response currency.
+      - in: query
+        name: max-duration
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 9007199254740991
+        description: Maximum total trip duration in minutes (inclusive).
+      - in: query
+        name: min-stopover-duration
+        schema:
+          type: string
+          pattern: ^\d{1,7}$
+        description: 'Minimum layover time in minutes (inclusive), a floor on a trip''s WORST leg. Judged per trip on the LARGEST leg total across its legs, the same fold stops applies, NOT on an individual connection: a leg with two 40-minute connections totals 80 and passes ?min-stopover-duration=60. A DIRECT trip has no layover, so it totals 0 and is DROPPED by any minimum above 0 - combine with ?stops=0 only if you want both. A trip whose layover upstream never stated is dropped by either bound rather than assumed to be 0. Read metadata.filterOptions.stopoverDurations for the span this snapshot carries, and judge the result on metadata.totalCandidates, never on the page.'
+      - in: query
+        name: max-stopover-duration
+        schema:
+          type: string
+          pattern: ^\d{1,7}$
+        description: 'Maximum layover time in minutes (inclusive), a ceiling on a trip''s worst leg. It bounds how LONG a wait is, never when it falls: a 135-minute wait beginning 04:00 is under any sane ceiling and is still an overnight one, and a 465-minute wait beginning 11:00 is over it and never sees a night. To answer whether a wait falls overnight, read the connection''s own clock from GET /v1/flights/trips/{tripId}?view=detail, whose segments carry arrivesAt and departsAt. Judged per trip on the LARGEST leg total across its legs, NOT on an individual connection: a 2-stop leg waiting 450 then 510 totals 960 and is dropped by ?max-stopover-duration=600 even though neither connection exceeds it. Direct trips total 0, so every maximum keeps them. Each card''s legs[].layoverMinutesByStop carries the per-connection breakdown that sums to the total judged here. Read metadata.filterOptions.stopoverDurations for the span this snapshot carries, and judge the result on metadata.totalCandidates, never on the page.'
+      - in: query
+        name: outbound-departure-blocks
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+            enum:
+            - midnight
+            - morning
+            - afternoon
+            - night
+        description: 'Coarse local-time buckets for the OUTBOUND leg''s DEPARTURE: midnight 00:00-05:59, morning 06:00-11:59, afternoon 12:00-17:59, night 18:00-23:59, local to that airport. Repeat or comma-separate; OR''d together. The four buckets PARTITION the day, so listing all four returns every trip exactly once - wego.com''s own buckets overlap at 06:00, 12:00 and 18:00 and these do not. They are wider than they sound, so prefer the matching -range param whenever the caller gave a hard edge.'
+      - in: query
+        name: outbound-departure-range
+        schema:
+          type: string
+          pattern: ^(?:\s*(?:\d{1,3}|1[0-3]\d{2}|14[0-2]\d|143[0-9])\s*-\s*(?:\d{1,3}|1[0-3]\d{2}|14[0-2]\d|143[0-9])\s*)?$
+        description: Minute-of-day window `min-max` (each 0-1439, local to that airport), both ends inclusive. When min > max the window wraps past midnight, e.g. 1320-360 means 22:00-06:00. Bounds the OUTBOUND leg's DEPARTURE, local to the departure airport.
+      - in: query
+        name: outbound-arrival-blocks
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+            enum:
+            - midnight
+            - morning
+            - afternoon
+            - night
+        description: 'Coarse local-time buckets for when the OUTBOUND leg LANDS: midnight 00:00-05:59, morning 06:00-11:59, afternoon 12:00-17:59, night 18:00-23:59, local to that airport. Repeat or comma-separate; OR''d together. The four buckets PARTITION the day, so listing all four returns every trip exactly once - wego.com''s own buckets overlap at 06:00, 12:00 and 18:00 and these do not. They are wider than they sound, so prefer the matching -range param whenever the caller gave a hard edge.'
+      - in: query
+        name: outbound-arrival-range
+        schema:
+          type: string
+          pattern: ^(?:\s*(?:\d{1,3}|1[0-3]\d{2}|14[0-2]\d|143[0-9])\s*-\s*(?:\d{1,3}|1[0-3]\d{2}|14[0-2]\d|143[0-9])\s*)?$
+        description: 'Minute-of-day window `min-max` (each 0-1439, local to that airport), both ends inclusive. When min > max the window wraps past midnight, e.g. 1320-360 means 22:00-06:00. Bounds when the OUTBOUND leg LANDS, local to the ARRIVAL airport - this is the param for "get me in before midnight" or "nothing that lands at 4am". Judged on the clock ALONE, not the calendar: a red-eye landing 04:00 the NEXT day reads as minute 240 and is dropped by 360-1320 exactly as a same-day 04:00 landing would be, and kept by 0-1080 exactly as a same-day one would be. Read each card''s legs[].arrivalDayOffset to tell the two apart.'
+      - in: query
+        name: return-departure-blocks
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+            enum:
+            - midnight
+            - morning
+            - afternoon
+            - night
+        description: 'Coarse local-time buckets for the RETURN leg''s DEPARTURE: midnight 00:00-05:59, morning 06:00-11:59, afternoon 12:00-17:59, night 18:00-23:59, local to that airport. Repeat or comma-separate; OR''d together. The four buckets PARTITION the day, so listing all four returns every trip exactly once - wego.com''s own buckets overlap at 06:00, 12:00 and 18:00 and these do not. They are wider than they sound, so prefer the matching -range param whenever the caller gave a hard edge. Applies to the RETURN leg (legs[1]) ONLY. A ONE-WAY search has no return leg, so any return-* bound judges a leg that does not exist and matches NOTHING - expect metadata.totalCandidates 0, which is the honest answer rather than a silently ignored filter. Judge the result on metadata.totalCandidates, never on the page.'
+      - in: query
+        name: return-departure-range
+        schema:
+          type: string
+          pattern: ^(?:\s*(?:\d{1,3}|1[0-3]\d{2}|14[0-2]\d|143[0-9])\s*-\s*(?:\d{1,3}|1[0-3]\d{2}|14[0-2]\d|143[0-9])\s*)?$
+        description: Minute-of-day window `min-max` (each 0-1439, local to that airport), both ends inclusive. When min > max the window wraps past midnight, e.g. 1320-360 means 22:00-06:00. Bounds the RETURN leg's DEPARTURE, local to that leg's departure airport. Applies to the RETURN leg (legs[1]) ONLY. A ONE-WAY search has no return leg, so any return-* bound judges a leg that does not exist and matches NOTHING - expect metadata.totalCandidates 0, which is the honest answer rather than a silently ignored filter. Judge the result on metadata.totalCandidates, never on the page.
+      - in: query
+        name: return-arrival-blocks
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+            enum:
+            - midnight
+            - morning
+            - afternoon
+            - night
+        description: 'Coarse local-time buckets for when the RETURN leg LANDS, i.e. when the traveller gets home: midnight 00:00-05:59, morning 06:00-11:59, afternoon 12:00-17:59, night 18:00-23:59, local to that airport. Repeat or comma-separate; OR''d together. The four buckets PARTITION the day, so listing all four returns every trip exactly once - wego.com''s own buckets overlap at 06:00, 12:00 and 18:00 and these do not. They are wider than they sound, so prefer the matching -range param whenever the caller gave a hard edge. Applies to the RETURN leg (legs[1]) ONLY. A ONE-WAY search has no return leg, so any return-* bound judges a leg that does not exist and matches NOTHING - expect metadata.totalCandidates 0, which is the honest answer rather than a silently ignored filter. Judge the result on metadata.totalCandidates, never on the page.'
+      - in: query
+        name: return-arrival-range
+        schema:
+          type: string
+          pattern: ^(?:\s*(?:\d{1,3}|1[0-3]\d{2}|14[0-2]\d|143[0-9])\s*-\s*(?:\d{1,3}|1[0-3]\d{2}|14[0-2]\d|143[0-9])\s*)?$
+        description: Minute-of-day window `min-max` (each 0-1439, local to that airport), both ends inclusive. When min > max the window wraps past midnight, e.g. 1320-360 means 22:00-06:00. Bounds when the RETURN leg LANDS, local to the ARRIVAL airport - the "home before 22:00" bound. Judged on the clock alone, not the calendar; read legs[].arrivalDayOffset to tell a next-day landing apart. Applies to the RETURN leg (legs[1]) ONLY. A ONE-WAY search has no return leg, so any return-* bound judges a leg that does not exist and matches NOTHING - expect metadata.totalCandidates 0, which is the honest answer rather than a silently ignored filter. Judge the result on metadata.totalCandidates, never on the page.
+      - in: query
+        name: outbound-min-duration
+        schema:
+          type: string
+          pattern: ^\d{1,7}$
+        description: Minimum elapsed duration of the OUTBOUND leg in minutes (inclusive). Bounds ONE leg, unlike max-duration which bounds the whole trip.
+      - in: query
+        name: outbound-max-duration
+        schema:
+          type: string
+          pattern: ^\d{1,7}$
+        description: 'Maximum elapsed duration of the OUTBOUND leg in minutes (inclusive). Bounds ONE leg, unlike max-duration which bounds the whole trip: a 3h outbound paired with a 14h return passes ?outbound-max-duration=300 and no trip-wide ceiling can express that.'
+      - in: query
+        name: return-min-duration
+        schema:
+          type: string
+          pattern: ^\d{1,7}$
+        description: Minimum elapsed duration of the RETURN leg in minutes (inclusive). Applies to the RETURN leg (legs[1]) ONLY. A ONE-WAY search has no return leg, so any return-* bound judges a leg that does not exist and matches NOTHING - expect metadata.totalCandidates 0, which is the honest answer rather than a silently ignored filter. Judge the result on metadata.totalCandidates, never on the page.
+      - in: query
+        name: return-max-duration
+        schema:
+          type: string
+          pattern: ^\d{1,7}$
+        description: Maximum elapsed duration of the RETURN leg in minutes (inclusive). Bounds ONE leg, unlike max-duration which bounds the whole trip. Applies to the RETURN leg (legs[1]) ONLY. A ONE-WAY search has no return leg, so any return-* bound judges a leg that does not exist and matches NOTHING - expect metadata.totalCandidates 0, which is the honest answer rather than a silently ignored filter. Judge the result on metadata.totalCandidates, never on the page.
+      - in: query
+        name: booking-types
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+            enum:
+            - wego
+            - airline
+        description: Booking types, repeat or comma-separate. OR'd together across the trip's fares – a trip matches if ANY of its fares has a listed kind (partner fares never match either value).
+      - in: query
+        name: booking-sites
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+        description: Provider codes, repeat or comma-separate. OR'd together across the trip's fares – a trip matches if ANY of its fares comes from a listed provider.
+      - in: query
+        name: stopover-airports
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+        description: Stopover airport IATA codes, repeat or comma-separate. OR'd together; a trip matches if ANY leg (outbound or return) stops over at any listed airport.
+      - in: query
+        name: aircraft
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+        description: Aircraft type CODES, repeat or comma-separate (e.g. ?aircraft=380,789). OR'd together; a trip matches if ANY leg (outbound or return) flies any listed type. These are upstream's short equipment codes (380, 789, 32N), NOT the display labels the results card publishes (A380, B787-9, A320 Neo) – read metadata.filterOptions.aircraft for this snapshot's codes and the label beside each one. Several codes can share one label (321 and 32S are both A321), which is why the code is the filter key. Case-insensitive. NOT a fixed set; an unknown code matches nothing rather than failing the request.
+      - in: query
+        name: currency
+        schema:
+          default: USD
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: AED
+        description: 'Pricing currency as a 3-letter ISO 4217 code (e.g. AED). Optional; defaults to USD server-side. Not inherited from the search: a search created in one currency reads back in USD unless you pass currency on every read, so re-send the search''s currency to keep prices in it.'
+      - in: query
+        name: locale
+        schema:
+          default: en
+          type: string
+          minLength: 1
+          maxLength: 35
+          example: en
+        description: Response language tag (e.g. en, ar). Optional; defaults to en server-side. Not inherited from the search – pass it on each read to keep results in that language.
+      - in: query
+        name: view
+        schema:
+          default: card
+          type: string
+          enum:
+          - card
+        description: 'Response projection. `card` is the only value: the lean results-list projection (cheapest-price summary + trip-level stops/duration + per-leg airline/aircraft/stopover, no fares[]). The former `default` projection was removed in issue #1308 – read GET /v1/flights/trips/{tripId} for a trip''s fares and segments.'
+  /v1/flights/trips/{tripId}:
+    get:
+      operationId: getFlightTrip
+      tags:
+      - Flights
+      summary: Open one flight trip
+      description: Returns one trip's full itinerary and every fare on it (each kind-tagged), for the given tripId within its searchId. searchId is required – it comes from the search/results snapshot the tripId was read from.
+      responses:
+        '200':
+          description: The full itinerary + all fares for the trip (agent default) or, with ?view=detail, the per-segment detail projection.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - type: object
+                  properties:
+                    tripId:
+                      type: string
+                      description: Opaque trip id, shaped {searchId}:{tripCode}; read it back with GET /v1/flights/trips/{tripId}.
+                    featured:
+                      description: 'The single highest-priority featured label, best_value > cheapest > cheapest_direct. best_value ranks on the score of the trip''s CHEAPEST fare, the same statistic sort=score_desc orders by, so on a score_desc read it lands on the first result. cheapest and cheapest_direct break a price tie by that same score, then by leg-1 departure – cheapest keeps the LATER departure, cheapest_direct the EARLIER one. Under sort=score_desc the two picks are also MOVED toward positions 2 and 3, matching wego.com. Those positions are targets, not guarantees: a pick already at or above its target stays put, and cheapest_direct lands at position 2 when the first result is itself at the cheapest price.'
+                      type: string
+                      enum:
+                      - best_value
+                      - cheapest
+                      - cheapest_direct
+                    stops:
+                      type: number
+                      description: Trip-level stop count, the max across legs.
+                    durationMinutes:
+                      type: number
+                      description: Total trip duration in minutes, summed across legs.
+                    outbound:
+                      type: object
+                      properties:
+                        from:
+                          type: string
+                          description: Departure airport IATA code.
+                        to:
+                          type: string
+                          description: Arrival airport IATA code.
+                        departsAt:
+                          type: string
+                          description: Leg departure, ISO 8601 with offset.
+                        arrivesAt:
+                          type: string
+                          description: Leg arrival, ISO 8601 with offset.
+                        durationMinutes:
+                          type: number
+                          description: Total leg duration in minutes.
+                        stops:
+                          type: number
+                          description: Stops on this leg (0 is nonstop).
+                        airlines:
+                          type: array
+                          items:
+                            type: string
+                          description: Raw IATA airline codes on the leg (unchanged). See airlinesDetail for display names.
+                        airlinesDetail:
+                          description: Index-aligned display names for `airlines`, resolved from the search snapshot's airline dictionary – the same join the results cards use; the bare code is the fallback on a dictionary miss. Omitted when the leg carries no airline codes. Additive – raw `airlines` codes are unaffected.
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              code:
+                                type: string
+                                description: IATA airline code (the operating/marketing carrier).
+                              name:
+                                type: string
+                                description: Airline display name from the search snapshot's airline dictionary; the bare code is the fallback on a dictionary miss.
+                            required:
+                            - code
+                            - name
+                            description: A carrier resolved to code + display name. This is airline identity (who operates/markets the flight), NOT the booking provider that sells the ticket – that is fares[].providerName / providerCode.
+                        operatingAirlines:
+                          description: 'Carriers that fly a segment of this leg they do not market. airlines / airlinesDetail name the MARKETING carriers only, so on a leg sold by one airline every code here is a carrier absent from the ticket; on an interline leg sold by two, one of these may also market a different segment. Read this before telling a traveller who they fly – mileage accrual, lounge access and baggage rules follow the operating carrier. Distinct codes, folded from this leg''s own segments; pair it with segments[] to see which flight each one operates. PRESENT ONLY WHEN A SEGMENT PROVES A CODESHARE: absent means none was proven on this leg, never a promise that the marketing carrier operates every segment.'
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              code:
+                                type: string
+                                description: IATA airline code (the operating/marketing carrier).
+                              name:
+                                type: string
+                                description: Airline display name from the search snapshot's airline dictionary; the bare code is the fallback on a dictionary miss.
+                            required:
+                            - code
+                            - name
+                            description: A carrier resolved to code + display name. This is airline identity (who operates/markets the flight), NOT the booking provider that sells the ticket – that is fares[].providerName / providerCode.
+                        transportTypes:
+                          minItems: 1
+                          type: array
+                          items:
+                            type: string
+                            enum:
+                            - FLIGHT
+                            - TRAIN
+                            - BUS
+                            - OTHER
+                            description: How this segment travels. FLIGHT is a plane. TRAIN and BUS are surface segments sold under a flight number, which airlines do publish, for example the Etihad coach between Dubai Bus Station and Abu Dhabi. OTHER is a mode upstream states that this API does not model, and is never a flight. Absent upstream is published as FLIGHT, which is what every segment meant before this field existed.
+                          description: 'Distinct transport modes across this leg''s segments, in segment order. Always present and never empty: an all-flight leg reads ["FLIGHT"], so one read of this field replaces folding segments[] yourself. Anything else means part of this leg is not a plane, and segments[] says which part.'
+                        segments:
+                          description: Per-segment identity (marketing/operating carrier, flight number, times, transport mode); omitted when upstream carries no segments for the leg. Previously reachable only via ?view=detail.
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              from:
+                                type: string
+                                description: Departure airport IATA code.
+                              to:
+                                type: string
+                                description: Arrival airport IATA code.
+                              departsAt:
+                                type: string
+                                description: Segment departure, ISO 8601 with offset.
+                              arrivesAt:
+                                type: string
+                                description: Segment arrival, ISO 8601 with offset.
+                              marketingCarrier:
+                                type: object
+                                properties:
+                                  code:
+                                    type: string
+                                    description: IATA airline code (the operating/marketing carrier).
+                                  name:
+                                    type: string
+                                    description: Airline display name from the search snapshot's airline dictionary; the bare code is the fallback on a dictionary miss.
+                                required:
+                                - code
+                                - name
+                                description: The carrier whose code is on the ticket (the marketing / flight-number airline).
+                              operatingCarrier:
+                                description: The carrier that actually operates the flight – present ONLY on a codeshare, when it differs from the marketing carrier.
+                                type: object
+                                properties:
+                                  code:
+                                    type: string
+                                    description: IATA airline code (the operating/marketing carrier).
+                                  name:
+                                    type: string
+                                    description: Airline display name from the search snapshot's airline dictionary; the bare code is the fallback on a dictionary miss.
+                                required:
+                                - code
+                                - name
+                              flightNumber:
+                                type: string
+                                description: The marketing flight designator, e.g. SQ12.
+                              transportType:
+                                type: string
+                                enum:
+                                - FLIGHT
+                                - TRAIN
+                                - BUS
+                                - OTHER
+                                description: How this segment travels. FLIGHT is a plane. TRAIN and BUS are surface segments sold under a flight number, which airlines do publish, for example the Etihad coach between Dubai Bus Station and Abu Dhabi. OTHER is a mode upstream states that this API does not model, and is never a flight. Absent upstream is published as FLIGHT, which is what every segment meant before this field existed.
+                              fromName:
+                                description: Departure endpoint's display name, when upstream hydrates it on the segment, for example "Dubai Bus Station" beside the bare XNB. Absent rather than guessed when upstream carries no name.
+                                type: string
+                              toName:
+                                description: Arrival endpoint's display name, when upstream hydrates it on the segment.
+                                type: string
+                              fromStationType:
+                                description: 'What kind of place the departure endpoint is, when upstream states it. Absent means unstated, never airport: read transportType, which is always present, to judge whether this segment is a flight.'
+                                type: string
+                                enum:
+                                - airport
+                                - bus_station
+                                - train_station
+                                - other
+                              toStationType:
+                                description: What kind of place the arrival endpoint is, when upstream states it. Absent means unstated, never airport.
+                                type: string
+                                enum:
+                                - airport
+                                - bus_station
+                                - train_station
+                                - other
+                            required:
+                            - from
+                            - to
+                            - departsAt
+                            - arrivesAt
+                            - marketingCarrier
+                            - flightNumber
+                            - transportType
+                            description: 'One segment within a leg, carrying canonical carrier identity (marketing vs operating), absolute times and its transport mode – the inputs a codeshare-aware handoff-identity check needs, plus what issue 42 added: whether this segment is a plane at all.'
+                      required:
+                      - from
+                      - to
+                      - departsAt
+                      - arrivesAt
+                      - durationMinutes
+                      - stops
+                      - airlines
+                      - transportTypes
+                      description: The outbound leg.
+                    return:
+                      type: object
+                      properties:
+                        from:
+                          type: string
+                          description: Departure airport IATA code.
+                        to:
+                          type: string
+                          description: Arrival airport IATA code.
+                        departsAt:
+                          type: string
+                          description: Leg departure, ISO 8601 with offset.
+                        arrivesAt:
+                          type: string
+                          description: Leg arrival, ISO 8601 with offset.
+                        durationMinutes:
+                          type: number
+                          description: Total leg duration in minutes.
+                        stops:
+                          type: number
+                          description: Stops on this leg (0 is nonstop).
+                        airlines:
+                          type: array
+                          items:
+                            type: string
+                          description: Raw IATA airline codes on the leg (unchanged). See airlinesDetail for display names.
+                        airlinesDetail:
+                          description: Index-aligned display names for `airlines`, resolved from the search snapshot's airline dictionary – the same join the results cards use; the bare code is the fallback on a dictionary miss. Omitted when the leg carries no airline codes. Additive – raw `airlines` codes are unaffected.
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              code:
+                                type: string
+                                description: IATA airline code (the operating/marketing carrier).
+                              name:
+                                type: string
+                                description: Airline display name from the search snapshot's airline dictionary; the bare code is the fallback on a dictionary miss.
+                            required:
+                            - code
+                            - name
+                            description: A carrier resolved to code + display name. This is airline identity (who operates/markets the flight), NOT the booking provider that sells the ticket – that is fares[].providerName / providerCode.
+                        operatingAirlines:
+                          description: 'Carriers that fly a segment of this leg they do not market. airlines / airlinesDetail name the MARKETING carriers only, so on a leg sold by one airline every code here is a carrier absent from the ticket; on an interline leg sold by two, one of these may also market a different segment. Read this before telling a traveller who they fly – mileage accrual, lounge access and baggage rules follow the operating carrier. Distinct codes, folded from this leg''s own segments; pair it with segments[] to see which flight each one operates. PRESENT ONLY WHEN A SEGMENT PROVES A CODESHARE: absent means none was proven on this leg, never a promise that the marketing carrier operates every segment.'
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              code:
+                                type: string
+                                description: IATA airline code (the operating/marketing carrier).
+                              name:
+                                type: string
+                                description: Airline display name from the search snapshot's airline dictionary; the bare code is the fallback on a dictionary miss.
+                            required:
+                            - code
+                            - name
+                            description: A carrier resolved to code + display name. This is airline identity (who operates/markets the flight), NOT the booking provider that sells the ticket – that is fares[].providerName / providerCode.
+                        transportTypes:
+                          minItems: 1
+                          type: array
+                          items:
+                            type: string
+                            enum:
+                            - FLIGHT
+                            - TRAIN
+                            - BUS
+                            - OTHER
+                            description: How this segment travels. FLIGHT is a plane. TRAIN and BUS are surface segments sold under a flight number, which airlines do publish, for example the Etihad coach between Dubai Bus Station and Abu Dhabi. OTHER is a mode upstream states that this API does not model, and is never a flight. Absent upstream is published as FLIGHT, which is what every segment meant before this field existed.
+                          description: 'Distinct transport modes across this leg''s segments, in segment order. Always present and never empty: an all-flight leg reads ["FLIGHT"], so one read of this field replaces folding segments[] yourself. Anything else means part of this leg is not a plane, and segments[] says which part.'
+                        segments:
+                          description: Per-segment identity (marketing/operating carrier, flight number, times, transport mode); omitted when upstream carries no segments for the leg. Previously reachable only via ?view=detail.
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              from:
+                                type: string
+                                description: Departure airport IATA code.
+                              to:
+                                type: string
+                                description: Arrival airport IATA code.
+                              departsAt:
+                                type: string
+                                description: Segment departure, ISO 8601 with offset.
+                              arrivesAt:
+                                type: string
+                                description: Segment arrival, ISO 8601 with offset.
+                              marketingCarrier:
+                                type: object
+                                properties:
+                                  code:
+                                    type: string
+                                    description: IATA airline code (the operating/marketing carrier).
+                                  name:
+                                    type: string
+                                    description: Airline display name from the search snapshot's airline dictionary; the bare code is the fallback on a dictionary miss.
+                                required:
+                                - code
+                                - name
+                                description: The carrier whose code is on the ticket (the marketing / flight-number airline).
+                              operatingCarrier:
+                                description: The carrier that actually operates the flight – present ONLY on a codeshare, when it differs from the marketing carrier.
+                                type: object
+                                properties:
+                                  code:
+                                    type: string
+                                    description: IATA airline code (the operating/marketing carrier).
+                                  name:
+                                    type: string
+                                    description: Airline display name from the search snapshot's airline dictionary; the bare code is the fallback on a dictionary miss.
+                                required:
+                                - code
+                                - name
+                              flightNumber:
+                                type: string
+                                description: The marketing flight designator, e.g. SQ12.
+                              transportType:
+                                type: string
+                                enum:
+                                - FLIGHT
+                                - TRAIN
+                                - BUS
+                                - OTHER
+                                description: How this segment travels. FLIGHT is a plane. TRAIN and BUS are surface segments sold under a flight number, which airlines do publish, for example the Etihad coach between Dubai Bus Station and Abu Dhabi. OTHER is a mode upstream states that this API does not model, and is never a flight. Absent upstream is published as FLIGHT, which is what every segment meant before this field existed.
+                              fromName:
+                                description: Departure endpoint's display name, when upstream hydrates it on the segment, for example "Dubai Bus Station" beside the bare XNB. Absent rather than guessed when upstream carries no name.
+                                type: string
+                              toName:
+                                description: Arrival endpoint's display name, when upstream hydrates it on the segment.
+                                type: string
+                              fromStationType:
+                                description: 'What kind of place the departure endpoint is, when upstream states it. Absent means unstated, never airport: read transportType, which is always present, to judge whether this segment is a flight.'
+                                type: string
+                                enum:
+                                - airport
+                                - bus_station
+                                - train_station
+                                - other
+                              toStationType:
+                                description: What kind of place the arrival endpoint is, when upstream states it. Absent means unstated, never airport.
+                                type: string
+                                enum:
+                                - airport
+                                - bus_station
+                                - train_station
+                                - other
+                            required:
+                            - from
+                            - to
+                            - departsAt
+                            - arrivesAt
+                            - marketingCarrier
+                            - flightNumber
+                            - transportType
+                            description: 'One segment within a leg, carrying canonical carrier identity (marketing vs operating), absolute times and its transport mode – the inputs a codeshare-aware handoff-identity check needs, plus what issue 42 added: whether this segment is a plane at all.'
+                      required:
+                      - from
+                      - to
+                      - departsAt
+                      - arrivesAt
+                      - durationMinutes
+                      - stops
+                      - airlines
+                      - transportTypes
+                      description: The return leg; present only on a round trip.
+                    fares:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          kind:
+                            type: string
+                            enum:
+                            - wego
+                            - airline
+                            - partner
+                            description: 'Fare source: wego (Book-on-Wego), airline (booked with the carrier) or partner (an OTA).'
+                          fareId:
+                            type: string
+                            description: Opaque fare id; pass it to the fare-options and booking-link routes.
+                          providerCode:
+                            type: string
+                            description: Booking provider code (the OTA or airline selling this fare).
+                          providerName:
+                            type: string
+                            description: Booking provider display name.
+                          price:
+                            type: object
+                            properties:
+                              total:
+                                type: number
+                                description: 'Whole-party total (adults + children + infants) in the requested currency, including payment + booking fees. No separate tax breakdown at search time: the fare options read carries a tax figure, set by the cabin rather than by the individual fare option.'
+                              totalUsd:
+                                type: number
+                                description: Whole-party total in USD (the cheapest-first sort key), including fees.
+                              currency:
+                                type: string
+                                description: ISO 4217 currency of total.
+                              scope:
+                                type: string
+                                const: party
+                                description: total covers the whole party (adults + children + infants), not per-person.
+                              includesFees:
+                                type: boolean
+                                const: true
+                                description: total includes payment + booking fees; there is no separate tax breakdown at search time.
+                            required:
+                            - total
+                            - totalUsd
+                            - currency
+                            - scope
+                            - includesFees
+                            description: Fare price. total/totalUsd are the whole-party amount, fee-inclusive, and are the authoritative figure for this fare. Search-time fares carry no per-passenger breakdown.
+                          refundable:
+                            type: boolean
+                            description: Whether this fare is refundable, as the provider states it.
+                          hasFareOptions:
+                            type: boolean
+                            description: Whether GET /v1/flights/fares/{fareId}/options can expand this fare into branded options.
+                          handoffUrl:
+                            type: string
+                            description: Deep link that hands the booking off to the provider or wego.com checkout for this fare.
+                        required:
+                        - kind
+                        - fareId
+                        - providerCode
+                        - providerName
+                        - price
+                        - refundable
+                        - hasFareOptions
+                        - handoffUrl
+                      description: Bookable fares for this trip, cheapest-first.
+                    metadata:
+                      type: object
+                      properties:
+                        currencyCode:
+                          type: string
+                          description: 'The currency this read ASKED upstream for, and the one every price on it is meant to be in. Read it beside currencyCodeSource before you show a number: a price computed in the wrong currency renders as a perfectly normal price, with no error and no odd shape to notice, so the response states which one rather than leaving it to be inferred. Where the operation also publishes a top-level currencyCode, that field reports the currency the prices actually came back in; the two agree unless upstream declined to reprice.'
+                        currencyCodeSource:
+                          type: string
+                          enum:
+                          - explicit
+                          - default
+                          description: 'How the API resolved currencyCode: explicit (the caller sent currency – including a value equal to the default) or default (USD, no currency sent). A default here is the one signal that the request never carried the currency you meant.'
+                        locale:
+                          type: string
+                          description: The language tag this read asked upstream for – what any localized text on it was resolved in (room and board names, airline and airport names, review prose).
+                        localeSource:
+                          type: string
+                          enum:
+                          - explicit
+                          - default
+                          description: 'How the API resolved locale: explicit (the caller sent locale – including a value equal to the default) or default (en, no locale sent). A default here explains text that came back in a language the caller did not ask for.'
+                      required:
+                      - currencyCode
+                      - currencyCodeSource
+                      - locale
+                      - localeSource
+                      description: What this read resolved currency and locale to, and how each was decided.
+                  required:
+                  - tripId
+                  - stops
+                  - durationMinutes
+                  - outbound
+                  - fares
+                  - metadata
+                  description: One itinerary carrying its fares (cheapest-first), and what this read resolved currency and locale to.
+                - type: object
+                  properties:
+                    tripId:
+                      type: string
+                      description: Opaque trip id, shaped {searchId}:{tripCode}; read it back with GET /v1/flights/trips/{tripId}.
+                    stops:
+                      type: number
+                      description: Trip-level stop count, the max across legs.
+                    durationMinutes:
+                      type: number
+                      description: Total trip duration in minutes, summed across legs.
+                    legs:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          direction:
+                            type: string
+                            enum:
+                            - depart
+                            - return
+                            description: 'Which leg this is: depart or return.'
+                          from:
+                            type: object
+                            properties:
+                              code:
+                                type: string
+                                description: Airport IATA code.
+                              name:
+                                type: string
+                                description: Airport display name from the snapshot's places.
+                              city:
+                                description: City name, when the dictionary has it.
+                                type: string
+                              stationType:
+                                description: What kind of place this is, when upstream states it. Absent means unstated, never airport.
+                                type: string
+                                enum:
+                                - airport
+                                - bus_station
+                                - train_station
+                                - other
+                            required:
+                            - code
+                            - name
+                            description: Departure airport for this leg.
+                          to:
+                            type: object
+                            properties:
+                              code:
+                                type: string
+                                description: Airport IATA code.
+                              name:
+                                type: string
+                                description: Airport display name from the snapshot's places.
+                              city:
+                                description: City name, when the dictionary has it.
+                                type: string
+                              stationType:
+                                description: What kind of place this is, when upstream states it. Absent means unstated, never airport.
+                                type: string
+                                enum:
+                                - airport
+                                - bus_station
+                                - train_station
+                                - other
+                            required:
+                            - code
+                            - name
+                            description: Arrival airport for this leg.
+                          departsAt:
+                            type: string
+                            description: Leg departure, ISO 8601 with offset.
+                          arrivesAt:
+                            type: string
+                            description: Leg arrival, ISO 8601 with offset.
+                          arrivalDayOffset:
+                            type: number
+                            description: Calendar days the arrival lands after departure (the +1 badge).
+                          overnight:
+                            type: boolean
+                            description: The leg spans a night.
+                          durationMinutes:
+                            type: number
+                            description: Leg duration in minutes.
+                          stops:
+                            type: number
+                            description: Stops on this leg (0 is nonstop).
+                          layoverMinutes:
+                            description: Total layover across the leg's stops, minutes.
+                            type: number
+                          segments:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                from:
+                                  type: object
+                                  properties:
+                                    code:
+                                      type: string
+                                      description: Airport IATA code.
+                                    name:
+                                      type: string
+                                      description: Airport display name from the snapshot's places.
+                                    city:
+                                      description: City name, when the dictionary has it.
+                                      type: string
+                                    stationType:
+                                      description: What kind of place this is, when upstream states it. Absent means unstated, never airport.
+                                      type: string
+                                      enum:
+                                      - airport
+                                      - bus_station
+                                      - train_station
+                                      - other
+                                  required:
+                                  - code
+                                  - name
+                                  description: Departure airport for this segment.
+                                to:
+                                  type: object
+                                  properties:
+                                    code:
+                                      type: string
+                                      description: Airport IATA code.
+                                    name:
+                                      type: string
+                                      description: Airport display name from the snapshot's places.
+                                    city:
+                                      description: City name, when the dictionary has it.
+                                      type: string
+                                    stationType:
+                                      description: What kind of place this is, when upstream states it. Absent means unstated, never airport.
+                                      type: string
+                                      enum:
+                                      - airport
+                                      - bus_station
+                                      - train_station
+                                      - other
+                                  required:
+                                  - code
+                                  - name
+                                  description: Arrival airport for this segment.
+                                departsAt:
+                                  type: string
+                                  description: Segment departure, ISO 8601 with offset.
+                                arrivesAt:
+                                  type: string
+                                  description: Segment arrival, ISO 8601 with offset.
+                                durationMinutes:
+                                  type: number
+                                  description: Segment duration in minutes.
+                                airline:
+                                  type: object
+                                  properties:
+                                    code:
+                                      type: string
+                                      description: IATA airline code.
+                                    name:
+                                      type: string
+                                      description: Airline display name.
+                                    logoUrl:
+                                      type: string
+                                      description: Airline logo URL; may 404, fall back to the name.
+                                  required:
+                                  - code
+                                  - name
+                                  - logoUrl
+                                  description: An airline resolved to code, name and logo.
+                                operatedBy:
+                                  description: Present only when the operating carrier differs.
+                                  type: string
+                                flightNumber:
+                                  type: string
+                                  description: Marketing flight designator, e.g. SQ12.
+                                aircraft:
+                                  type: string
+                                  description: Aircraft type name, e.g. Boeing 777-300ER. On a surface segment this carries the equipment label ("Bus"); transportType is the typed form of the same fact.
+                                transportType:
+                                  type: string
+                                  enum:
+                                  - FLIGHT
+                                  - TRAIN
+                                  - BUS
+                                  - OTHER
+                                  description: How this segment travels. FLIGHT is a plane. TRAIN and BUS are surface segments sold under a flight number, which airlines do publish, for example the Etihad coach between Dubai Bus Station and Abu Dhabi. OTHER is a mode upstream states that this API does not model, and is never a flight. Absent upstream is published as FLIGHT, which is what every segment meant before this field existed.
+                                cabin:
+                                  type: string
+                                  description: Cabin class on this segment.
+                                amenities:
+                                  type: object
+                                  properties:
+                                    wifi:
+                                      type: object
+                                      properties:
+                                        text:
+                                          type: string
+                                          description: Human label for the amenity.
+                                        exists:
+                                          type: boolean
+                                          description: The amenity is present on the segment.
+                                        free:
+                                          type: boolean
+                                          description: The amenity is included, not sold as an extra.
+                                      required:
+                                      - text
+                                      - exists
+                                      - free
+                                      description: One cabin amenity on a segment.
+                                    power:
+                                      type: object
+                                      properties:
+                                        text:
+                                          type: string
+                                          description: Human label for the amenity.
+                                        exists:
+                                          type: boolean
+                                          description: The amenity is present on the segment.
+                                        free:
+                                          type: boolean
+                                          description: The amenity is included, not sold as an extra.
+                                      required:
+                                      - text
+                                      - exists
+                                      - free
+                                      description: One cabin amenity on a segment.
+                                    entertainment:
+                                      type: object
+                                      properties:
+                                        text:
+                                          type: string
+                                          description: Human label for the amenity.
+                                        exists:
+                                          type: boolean
+                                          description: The amenity is present on the segment.
+                                        free:
+                                          type: boolean
+                                          description: The amenity is included, not sold as an extra.
+                                      required:
+                                      - text
+                                      - exists
+                                      - free
+                                      description: One cabin amenity on a segment.
+                                    meal:
+                                      type: object
+                                      properties:
+                                        text:
+                                          type: string
+                                          description: Human label for the amenity.
+                                        exists:
+                                          type: boolean
+                                          description: The amenity is present on the segment.
+                                        free:
+                                          type: boolean
+                                          description: The amenity is included, not sold as an extra.
+                                      required:
+                                      - text
+                                      - exists
+                                      - free
+                                      description: One cabin amenity on a segment.
+                                  description: Cabin amenities on the segment, by kind; each present only when upstream reports it.
+                                seat:
+                                  type: object
+                                  properties:
+                                    pitch:
+                                      description: Seat pitch, e.g. "76 cm seat pitch".
+                                      type: string
+                                    layout:
+                                      description: Row layout, e.g. "3-3-3".
+                                      type: string
+                                  description: Seat pitch and layout for the segment, when reported.
+                              required:
+                              - from
+                              - to
+                              - departsAt
+                              - arrivesAt
+                              - durationMinutes
+                              - airline
+                              - flightNumber
+                              - aircraft
+                              - transportType
+                              - cabin
+                              description: One flight segment as the detail view renders it.
+                            description: The individual flights that make up this leg.
+                        required:
+                        - direction
+                        - from
+                        - to
+                        - departsAt
+                        - arrivesAt
+                        - arrivalDayOffset
+                        - overnight
+                        - durationMinutes
+                        - stops
+                        - segments
+                      description: The trip's legs with per-segment detail, outbound first.
+                    fares:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          kind:
+                            type: string
+                            enum:
+                            - wego
+                            - airline
+                            - partner
+                            description: 'Fare source: wego (Book-on-Wego), airline (booked with the carrier) or partner (an OTA).'
+                          fareId:
+                            type: string
+                            description: Opaque fare id; pass it to the fare-options and booking-link routes.
+                          provider:
+                            type: object
+                            properties:
+                              code:
+                                type: string
+                                description: Booking provider (OTA/airline) code.
+                              name:
+                                type: string
+                                description: Provider display name.
+                              logoUrl:
+                                type: string
+                                description: Synthesized provider logo URL; may 404 – fall back to name.
+                              color:
+                                description: Provider brand color, when known.
+                                type: string
+                            required:
+                            - code
+                            - name
+                            - logoUrl
+                            description: A booking provider resolved to code, name, logo and brand color.
+                          price:
+                            type: object
+                            properties:
+                              total:
+                                type: number
+                                description: Whole-party total, including payment + booking fees.
+                              totalUsd:
+                                type: number
+                                description: Whole-party total in USD.
+                              currency:
+                                type: string
+                                description: ISO 4217 currency of total.
+                              includesTaxesAndFees:
+                                type: boolean
+                                description: Upstream totals are fee-inclusive; no separate tax breakdown at search time.
+                            required:
+                            - total
+                            - totalUsd
+                            - currency
+                            - includesTaxesAndFees
+                            description: Fare price for the whole party, fee-inclusive.
+                          baggage:
+                            description: Baggage allowance for this fare, when the provider states it.
+                            type: object
+                            properties:
+                              cabin:
+                                description: Cabin baggage allowance display string.
+                                type: string
+                              checked:
+                                description: Checked baggage allowance display string.
+                                type: string
+                          refundable:
+                            type: boolean
+                            description: Whether this fare is refundable, as the provider states it.
+                          hasFareOptions:
+                            type: boolean
+                            description: Whether GET /v1/flights/fares/{fareId}/options can expand this fare into branded options.
+                          handoffUrl:
+                            type: string
+                            description: Deep link to the provider or wego.com checkout for this fare.
+                        required:
+                        - kind
+                        - fareId
+                        - provider
+                        - price
+                        - refundable
+                        - hasFareOptions
+                        - handoffUrl
+                        description: One bookable fare in the detail view (carries provider brand).
+                      description: Bookable fares for this trip, cheapest-first.
+                    metadata:
+                      type: object
+                      properties:
+                        currencyCode:
+                          type: string
+                          description: 'The currency this read ASKED upstream for, and the one every price on it is meant to be in. Read it beside currencyCodeSource before you show a number: a price computed in the wrong currency renders as a perfectly normal price, with no error and no odd shape to notice, so the response states which one rather than leaving it to be inferred. Where the operation also publishes a top-level currencyCode, that field reports the currency the prices actually came back in; the two agree unless upstream declined to reprice.'
+                        currencyCodeSource:
+                          type: string
+                          enum:
+                          - explicit
+                          - default
+                          description: 'How the API resolved currencyCode: explicit (the caller sent currency – including a value equal to the default) or default (USD, no currency sent). A default here is the one signal that the request never carried the currency you meant.'
+                        locale:
+                          type: string
+                          description: The language tag this read asked upstream for – what any localized text on it was resolved in (room and board names, airline and airport names, review prose).
+                        localeSource:
+                          type: string
+                          enum:
+                          - explicit
+                          - default
+                          description: 'How the API resolved locale: explicit (the caller sent locale – including a value equal to the default) or default (en, no locale sent). A default here explains text that came back in a language the caller did not ask for.'
+                      required:
+                      - currencyCode
+                      - currencyCodeSource
+                      - locale
+                      - localeSource
+                      description: What this read resolved currency and locale to, and how each was decided.
+                  required:
+                  - tripId
+                  - stops
+                  - durationMinutes
+                  - legs
+                  - fares
+                  - metadata
+                  description: One itinerary with per-segment detail, amenities and seat metadata (?view=detail), and what this read resolved currency and locale to.
+        '400':
+          description: Invalid request body/query/path parameters.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Unknown or expired trip. Ids are context-bound: a tripId resolves only with the searchId it came from, and retrying an expired one never recovers - create a new search and rethread.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: The upstream flights service returned an invalid response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The flights service is temporarily unavailable (`upstream_unavailable`) or rate-limited upstream (`upstream_rate_limited`); retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - in: path
+        name: tripId
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9._:~=-]{1,256}$
+        required: true
+        description: The trip id from a search-results snapshot, shaped {searchId}:{tripCode}. It resolves only together with the searchId it came from, and both expire with the search.
+      - in: query
+        name: searchId
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9._:~=-]{1,256}$
+        required: true
+        description: 'Required search context: the searchId the tripId was read from (it is the tripId''s first :-segment). A trip id resolves only with its own search, and both expire together.'
+      - in: query
+        name: currency
+        schema:
+          default: USD
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: AED
+        description: 'Pricing currency as a 3-letter ISO 4217 code (e.g. AED). Optional; defaults to USD server-side. Not inherited from the search: a search created in one currency reads back in USD unless you pass currency on every read, so re-send the search''s currency to keep prices in it.'
+      - in: query
+        name: locale
+        schema:
+          default: en
+          type: string
+          minLength: 1
+          maxLength: 35
+          example: en
+        description: Response language tag (e.g. en, ar). Optional; defaults to en server-side. Not inherited from the search – pass it on each read to keep results in that language.
+      - in: query
+        name: view
+        schema:
+          default: default
+          type: string
+          enum:
+          - default
+          - detail
+        description: 'Response projection. default (agent shape): the full itinerary with every fare and per-flight segments. detail: the richer UI view-model (per-segment amenities, seat metadata, provider brand). Defaults to default.'
+  /v1/flights/trips/{tripId}/experience:
+    get:
+      operationId: getTripExperience
+      tags:
+      - Flights
+      summary: Read a trip's experience signals
+      description: 'Per-leg signals for what a journey is like to sit through: overnight, longStopover, earlyDeparture, lateArrival, plus positive-only witnesses for a tight connection, aircraft age and carrier rating. No score - Recommended sort ranks on the price-adjusted fare score, which one would not match.'
+      responses:
+        '200':
+          description: The trip's per-leg signals. A witness field that is absent was not asserted; it is not a negative.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tripId:
+                    type: string
+                    description: The trip these signals are for.
+                  legs:
+                    minItems: 1
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          description: The upstream leg id, e.g. `SIN-BKK:TR638~3:0`.
+                        departureAirportCode:
+                          type: string
+                          description: Departure airport IATA code.
+                        arrivalAirportCode:
+                          type: string
+                          description: Arrival airport IATA code.
+                        stopsCount:
+                          type: integer
+                          minimum: 0
+                          maximum: 9007199254740991
+                          description: Stopovers on this leg – what makes an absent shortStopover readable.
+                        signals:
+                          type: object
+                          properties:
+                            overnight:
+                              type: boolean
+                              description: The leg spans a night.
+                            longStopover:
+                              type: boolean
+                              description: A stopover long enough to be a wait rather than a connection.
+                            earlyDeparture:
+                              type: boolean
+                              description: Departs early enough to cost a night's sleep.
+                            lateArrival:
+                              type: boolean
+                              description: Arrives late enough to cost one.
+                            shortStopover:
+                              description: 'A connection tight enough to be a risk. Omitted on a leg with no stopover: upstream reports every nonstop leg as a short stopover, which carries no information.'
+                              type: boolean
+                              const: true
+                            newAircraft:
+                              description: Present only when asserted; absent means not asserted.
+                              type: boolean
+                              const: true
+                            highlyRatedCarrier:
+                              description: Present only when asserted; absent means not asserted.
+                              type: boolean
+                              const: true
+                          required:
+                          - overnight
+                          - longStopover
+                          - earlyDeparture
+                          - lateArrival
+                          description: 'Per-leg comfort signals. newAircraft and highlyRatedCarrier are positive-only witnesses: present only when upstream asserts them, absent otherwise; absent is never a negative.'
+                      required:
+                      - id
+                      - departureAirportCode
+                      - arrivalAirportCode
+                      - stopsCount
+                      - signals
+                    description: Per-leg comfort signals, in itinerary order (outbound first).
+                  metadata:
+                    type: object
+                    properties:
+                      legCount:
+                        type: integer
+                        minimum: 1
+                        maximum: 9007199254740991
+                        description: 'Legs on this trip: 1 one-way, 2 a return.'
+                    required:
+                    - legCount
+                    description: Trip-level experience metadata.
+                required:
+                - tripId
+                - legs
+                - metadata
+        '400':
+          description: Invalid request body/query/path parameters.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Unknown trip, or its search has expired. Search again and re-open the trip - retrying the same id never recovers.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: The upstream flights service returned an invalid response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The flights service is temporarily unavailable (`upstream_unavailable`) or rate-limited upstream (`upstream_rate_limited`); retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - in: path
+        name: tripId
+        schema:
+          type: string
+          maxLength: 256
+          pattern: ^[A-Za-z0-9._~=-]+:[A-Za-z0-9._:~=-]+$
+        required: true
+        description: The trip from a flight-search result. Shaped {searchId}:{tripCode}.
+      - in: query
+        name: searchId
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9._:~=-]{1,256}$
+        description: Optional cross-check. When supplied it must equal the tripId's first :-segment; a mismatch is rejected.
+  /v1/flights/fares/{fareId}/options:
+    get:
+      operationId: getFareOptions
+      tags:
+      - Flights
+      summary: List a fare's options
+      description: Returns a Book-on-Wego fare's bookable options (price, baggage, refundability, penalties, and the carrier's terms links when it publishes any), ordered by leg then price. A multi-leg trip needs ONE option per leg - read the top-level price, never min(options). Non-wego fareId 400; stale 404.
+      responses:
+        '200':
+          description: The fare options, ordered by leg then cheapest-first within a leg.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fareId:
+                    type: string
+                    description: The fare id these options are for.
+                  currencyCode:
+                    type: string
+                    description: The currency the prices are quoted in – the same value as metadata.currencyCode, which carries currencyCodeSource beside it. Unlike the results read, this route quotes in the currency it asked for, so the two cannot disagree.
+                  price:
+                    type: object
+                    properties:
+                      total:
+                        type: number
+                        description: Whole-trip, whole-party total for the cheapest combination of options, as the upstream states it. Not computed here.
+                      totalUsd:
+                        description: The same figure in USD.
+                        type: number
+                      currency:
+                        type: string
+                        description: ISO 4217 currency of total.
+                      scope:
+                        type: string
+                        const: party
+                        description: total covers the whole party (adults + children + infants), not per-person.
+                    required:
+                    - total
+                    - currency
+                    - scope
+                    description: The whole-trip price for this fare, so no caller has to add per-leg options together. Absent when the upstream did not state one.
+                  legs:
+                    description: The legs the options are attributed to, in upstream leg order. Present only when every option carries a legId that matches one of them.
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        legId:
+                          type: number
+                          description: The leg this group of options prices, as the upstream numbers it (1 = the first leg).
+                        from:
+                          description: Departure airport code of the leg.
+                          type: string
+                        to:
+                          description: Arrival airport code of the leg.
+                          type: string
+                        departsAt:
+                          description: Local departure date-time of the leg.
+                          type: string
+                        airlines:
+                          description: Marketing airline codes on the leg.
+                          type: array
+                          items:
+                            type: string
+                      required:
+                      - legId
+                      description: One leg the options are attributed to, so a legId on an option is legible.
+                  options:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        fareOptionId:
+                          type: string
+                          description: The fare option id (a UUID); sent to wego.com as the booking link's branded_fare param.
+                        name:
+                          type: string
+                          description: The marketing name, e.g. Economy Lite.
+                        price:
+                          type: object
+                          properties:
+                            total:
+                              type: number
+                              description: Whole-party total for this fare option in the requested currency, including payment + booking fees. Unlike search-time fares, the fare options read carries a tax figure upstream, surfaced as the sibling totalTaxAmount when present.
+                            totalUsd:
+                              type: number
+                              description: Whole-party total in USD. The price key options are sorted on WITHIN a leg; the list itself is ordered by leg first.
+                            currency:
+                              type: string
+                              description: ISO 4217 currency of total.
+                            totalTaxAmount:
+                              description: Whole-party tax for this option, in the same currency as total. Taxes are set by the cabin, not by the fare option, so every fare option in the same cabin carries the same figure while their totals differ. Forwarded when the upstream provides it; absent otherwise.
+                              type: number
+                            passengers:
+                              description: 'Per-passenger-type split of this option''s total: one entry per type present in the party, each with its own head count. The party totals sum to total. Absent when the upstream priced the option without a passenger breakdown.'
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  type:
+                                    type: string
+                                    enum:
+                                    - adult
+                                    - child
+                                    - infant
+                                    description: The passenger type this entry prices.
+                                  count:
+                                    type: number
+                                    description: How many passengers of this type the party carries.
+                                  perPerson:
+                                    type: object
+                                    properties:
+                                      fare:
+                                        type: number
+                                        description: Base fare for one passenger of this type.
+                                      tax:
+                                        type: number
+                                        description: Tax for one passenger of this type.
+                                      total:
+                                        type: number
+                                        description: What one passenger of this type pays, fare + tax.
+                                    required:
+                                    - fare
+                                    - tax
+                                    - total
+                                    description: What a single passenger of this type pays.
+                                  party:
+                                    type: object
+                                    properties:
+                                      fare:
+                                        type: number
+                                        description: Base fare for every passenger of this type.
+                                      tax:
+                                        type: number
+                                        description: Tax for every passenger of this type.
+                                      total:
+                                        type: number
+                                        description: What every passenger of this type pays together.
+                                    required:
+                                    - fare
+                                    - tax
+                                    - total
+                                    description: perPerson times count, taken from the upstream's own party-level figure when it states one, so it can differ from the exact product in the last decimal place.
+                                required:
+                                - type
+                                - count
+                                - perPerson
+                                - party
+                                description: One passenger type's share of a fare option, split into base fare and tax.
+                            covers:
+                              description: 'How much of the TRIP this total covers: leg = this option''s own leg only, so a multi-leg trip needs one option per leg and their sum is the trip price; trip = the whole journey. Always whole-party either way. A positive witness – absent means the upstream did not let us attribute it, never that the total is the whole trip.'
+                              type: string
+                              enum:
+                              - leg
+                              - trip
+                          required:
+                          - total
+                          - totalUsd
+                          - currency
+                          description: The price of one fare option (pass-through display values). Always whole-party for passengers; read covers for how much of the trip it pays for.
+                        refundable:
+                          type: boolean
+                          description: Whether this option is refundable.
+                        exchangeable:
+                          type: boolean
+                          description: Whether this option allows a date or flight change.
+                        baggage:
+                          type: object
+                          properties:
+                            cabin:
+                              description: Cabin baggage allowance display string.
+                              type: string
+                            checked:
+                              description: Checked baggage allowance display string.
+                              type: string
+                          description: Baggage allowance display strings for one fare option.
+                        penalties:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              type:
+                                type: string
+                                enum:
+                                - change
+                                - cancel
+                                description: The action the penalty governs.
+                              policy:
+                                type: string
+                                enum:
+                                - free
+                                - fee
+                                - not_permitted
+                                description: free (allowed, no charge), fee (allowed, priced), or not_permitted.
+                              amount:
+                                description: Fee amount, present only when policy is fee.
+                                type: number
+                              currency:
+                                description: ISO 4217 currency for amount, present only when policy is fee.
+                                type: string
+                            required:
+                            - type
+                            - policy
+                            description: A change or cancel penalty on a fare option.
+                          description: Always both change and cancel, in that order.
+                        termsUrls:
+                          description: 'The airline''s terms and conditions links for this option, in the order the carrier lists them. Absent when the carrier publishes its rules as text rather than links, or when the terms read was unavailable - never an empty array. These are the carrier''s own pages, not a machine-readable rulebook: refundability, exchangeability, baggage and the change/cancel penalties are the fields on this option, and are what an agent should reason over.'
+                          type: array
+                          items:
+                            type: string
+                        legId:
+                          description: The leg this option prices, matching a legs[] entry. Present when the upstream attributes it; absent when it does not.
+                          type: number
+                      required:
+                      - fareOptionId
+                      - name
+                      - price
+                      - refundable
+                      - exchangeable
+                      - baggage
+                      - penalties
+                      description: One fare option.
+                    description: The full fare option list – no filter, no pagination. Ordered by legId, then cheapest-first inside each leg, so the two legs of a split fare never interleave.
+                  metadata:
+                    type: object
+                    properties:
+                      currencyCode:
+                        type: string
+                        description: 'The currency this read ASKED upstream for, and the one every price on it is meant to be in. Read it beside currencyCodeSource before you show a number: a price computed in the wrong currency renders as a perfectly normal price, with no error and no odd shape to notice, so the response states which one rather than leaving it to be inferred. Where the operation also publishes a top-level currencyCode, that field reports the currency the prices actually came back in; the two agree unless upstream declined to reprice.'
+                      currencyCodeSource:
+                        type: string
+                        enum:
+                        - explicit
+                        - default
+                        description: 'How the API resolved currencyCode: explicit (the caller sent currency – including a value equal to the default) or default (USD, no currency sent). A default here is the one signal that the request never carried the currency you meant.'
+                      locale:
+                        type: string
+                        description: The language tag this read asked upstream for – what any localized text on it was resolved in (room and board names, airline and airport names, review prose).
+                      localeSource:
+                        type: string
+                        enum:
+                        - explicit
+                        - default
+                        description: 'How the API resolved locale: explicit (the caller sent locale – including a value equal to the default) or default (en, no locale sent). A default here explains text that came back in a language the caller did not ask for.'
+                    required:
+                    - currencyCode
+                    - currencyCodeSource
+                    - locale
+                    - localeSource
+                    description: What this read resolved currency and locale to, and how each was decided.
+                required:
+                - fareId
+                - currencyCode
+                - options
+                - metadata
+                description: The fare options for one Book-on-Wego fare, and what this read resolved currency and locale to.
+        '400':
+          description: Invalid request query/path parameters, or the fares service rejected the fareId or currency (`validation_failed`; the `detail` names the recovery).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: The fare was not found or its search has expired.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: The upstream flights service returned an invalid response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The flights service is temporarily unavailable (`upstream_unavailable`) or rate-limited upstream (`upstream_rate_limited`); retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - in: path
+        name: fareId
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9._:~=-]{1,256}$
+        required: true
+        description: The Book-on-Wego fare id from a flight-search trip detail.
+      - in: query
+        name: currency
+        schema:
+          default: USD
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: AED
+        description: Pricing currency as a 3-letter ISO 4217 code.
+      - in: query
+        name: locale
+        schema:
+          default: en
+          type: string
+          minLength: 1
+          maxLength: 35
+          example: en
+        description: Response language tag.
+  /v1/flights/fares/{fareId}/booking-link:
+    get:
+      operationId: getFareBookingLink
+      tags:
+      - Flights
+      summary: Build a fare's wego.com booking link
+      description: Builds the wego.com booking deep-link for a chosen Book-on-Wego fare, with one fare option pre-selected PER LEG. A pure, stateless URL build from the caller-supplied search context - no upstream call, no booking, no payment. The caller passes back the trip/leg/passenger context.
+      responses:
+        '200':
+          description: The booking handoff URL.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bookingUrl:
+                    type: string
+                    description: A wego.com booking deep-link with the chosen fare pre-selected.
+                  expires:
+                    type: boolean
+                    const: true
+                    description: 'Always true: this link is bound to a live search and stops working with it, in about five to seven minutes. To send someone a link that lasts, use GET /v1/flights/search-link.'
+                required:
+                - bookingUrl
+                - expires
+                description: The booking handoff URL, and the fact that it expires.
+        '400':
+          description: Invalid fare id or query parameters.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - in: path
+        name: fareId
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9._:~=-]{1,256}$
+        required: true
+        description: The Book-on-Wego fare id from a flight-search trip detail.
+      - in: query
+        name: tripId
+        schema:
+          type: string
+          maxLength: 256
+          pattern: ^[A-Za-z0-9._~=-]+:[A-Za-z0-9._:~=-]+$
+        required: true
+        description: The trip the fare belongs to, from a flight-search result. Shaped {searchId}:{tripCode}.
+      - in: query
+        name: searchId
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9._:~=-]{1,256}$
+        description: Optional cross-check. When supplied it must equal the tripId's first :-segment; a mismatch is rejected.
+      - in: query
+        name: fareOptionId
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9._:~=-]{1,256}(?:,[A-Za-z0-9._:~=-]{1,256}){0,7}$
+        required: true
+        description: 'The fare option(s) to pre-select, from GET /v1/flights/fares/{fareId}/options. Required: without it the booking page has no fare to open and dead-ends. When that read reported price.covers=leg, pass ONE id per trip leg as a comma-separated list, in any order: a single id then prices only its own leg while the page still presents the whole round trip. A whole-trip fare (price.covers=trip) takes exactly one id. At most 8, and no id twice.'
+      - in: query
+        name: from
+        schema:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: DXB
+        required: true
+        description: Origin airport or city code, as sent to the flight search.
+      - in: query
+        name: to
+        schema:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: LHR
+        required: true
+        description: Destination airport or city code, as sent to the flight search.
+      - in: query
+        name: fromCity
+        schema:
+          anyOf:
+          - type: boolean
+          - type: string
+            enum:
+            - '0'
+            - '1'
+            - 'true'
+            - 'false'
+        description: Whether `from` is a city code rather than an airport code.
+      - in: query
+        name: toCity
+        schema:
+          anyOf:
+          - type: boolean
+          - type: string
+            enum:
+            - '0'
+            - '1'
+            - 'true'
+            - 'false'
+        description: Whether `to` is a city code rather than an airport code.
+      - in: query
+        name: fromDate
+        schema:
+          type: string
+          pattern: ^\d{4}-\d{2}-\d{2}$
+        required: true
+        description: Outbound departure date, YYYY-MM-DD, as sent to the flight search.
+      - in: query
+        name: toDate
+        schema:
+          type: string
+          pattern: ^\d{4}-\d{2}-\d{2}$
+        description: Return date, YYYY-MM-DD. Omit for a one-way handoff.
+      - in: query
+        name: cabin
+        schema:
+          default: economy
+          type: string
+          enum:
+          - economy
+          - premium_economy
+          - business
+          - first
+        description: Cabin class, as sent to the flight search.
+      - in: query
+        name: adults
+        schema:
+          default: 1
+          type: integer
+          minimum: 1
+          maximum: 9
+        description: Adult passengers (1-9).
+      - in: query
+        name: children
+        schema:
+          default: 0
+          type: integer
+          minimum: 0
+          maximum: 8
+        description: Child passengers (0-8).
+      - in: query
+        name: infants
+        schema:
+          default: 0
+          type: integer
+          minimum: 0
+          maximum: 8
+        description: Infant passengers (0-8). Must not exceed adults.
+      - in: query
+        name: siteCode
+        schema:
+          type: string
+          pattern: ^[A-Z]{2}$
+        description: 'Wego market (point of sale) as a 2-letter code, e.g. AE. Optional: if omitted the API defaults to US. A client that knows the user''s market (the wego CLI derives it from the id_token) passes it as an explicit siteCode.'
+      - in: query
+        name: currency
+        schema:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: AED
+        description: 'Pricing currency as a 3-letter ISO 4217 code (e.g. AED). Optional: when omitted the built URL carries NO currency parameter – it is not defaulted to USD, so wego.com shows the market''s own default. Pass it to pin the handoff to a currency.'
+      - in: query
+        name: locale
+        schema:
+          default: en
+          type: string
+          minLength: 1
+          maxLength: 35
+          example: en
+        description: Response language tag for the wego.com page (e.g. en, ar). Defaults to en.
+  /v1/flights/search-link:
+    get:
+      operationId: getFlightSearchLink
+      tags:
+      - Flights
+      summary: Build a durable wego.com search link
+      description: 'Builds a shareable wego.com flight-search URL from the caller''s own route, dates, cabin and passengers. A pure, stateless string build - no upstream call, no search created. It carries no search-scoped id, so it does not expire: whoever opens it runs the search live.'
+      responses:
+        '200':
+          description: The durable wego.com search URL.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  searchUrl:
+                    type: string
+                    description: A wego.com flight-search URL for this route, dates, cabin and passengers. Opening it runs the search live.
+                  expires:
+                    type: boolean
+                    const: false
+                    description: 'Always false: the URL carries no search-scoped id, so it keeps working. The prices behind it are whatever a live search returns when it is opened.'
+                required:
+                - searchUrl
+                - expires
+                description: The durable wego.com search URL.
+        '400':
+          description: Invalid query parameters. fromDate must be a real calendar date, not in the past, and within 365 days; toDate must be a real date on or after it. A durable link cannot carry a date no live search can represent.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - in: query
+        name: from
+        schema:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: DXB
+        required: true
+        description: Origin airport or city code, as sent to the flight search.
+      - in: query
+        name: to
+        schema:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: LHR
+        required: true
+        description: Destination airport or city code, as sent to the flight search.
+      - in: query
+        name: fromCity
+        schema:
+          anyOf:
+          - type: boolean
+          - type: string
+            enum:
+            - '0'
+            - '1'
+            - 'true'
+            - 'false'
+        description: Whether `from` is a city code rather than an airport code.
+      - in: query
+        name: toCity
+        schema:
+          anyOf:
+          - type: boolean
+          - type: string
+            enum:
+            - '0'
+            - '1'
+            - 'true'
+            - 'false'
+        description: Whether `to` is a city code rather than an airport code.
+      - in: query
+        name: fromDate
+        schema:
+          type: string
+          pattern: ^\d{4}-\d{2}-\d{2}$
+        required: true
+        description: Outbound departure date, YYYY-MM-DD, as sent to the flight search.
+      - in: query
+        name: toDate
+        schema:
+          type: string
+          pattern: ^\d{4}-\d{2}-\d{2}$
+        description: Return date, YYYY-MM-DD. Omit for a one-way handoff.
+      - in: query
+        name: cabin
+        schema:
+          default: economy
+          type: string
+          enum:
+          - economy
+          - premium_economy
+          - business
+          - first
+        description: Cabin class, as sent to the flight search.
+      - in: query
+        name: adults
+        schema:
+          default: 1
+          type: integer
+          minimum: 1
+          maximum: 9
+        description: Adult passengers (1-9).
+      - in: query
+        name: children
+        schema:
+          default: 0
+          type: integer
+          minimum: 0
+          maximum: 8
+        description: Child passengers (0-8).
+      - in: query
+        name: infants
+        schema:
+          default: 0
+          type: integer
+          minimum: 0
+          maximum: 8
+        description: Infant passengers (0-8). Must not exceed adults.
+      - in: query
+        name: siteCode
+        schema:
+          type: string
+          pattern: ^[A-Z]{2}$
+        description: 'Wego market (point of sale) as a 2-letter code, e.g. AE. Optional: if omitted the API defaults to US. A client that knows the user''s market (the wego CLI derives it from the id_token) passes it as an explicit siteCode.'
+      - in: query
+        name: currency
+        schema:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: AED
+        description: 'Pricing currency as a 3-letter ISO 4217 code (e.g. AED). Optional: when omitted the built URL carries NO currency parameter – it is not defaulted to USD, so wego.com shows the market''s own default. Pass it to pin the handoff to a currency.'
+      - in: query
+        name: locale
+        schema:
+          default: en
+          type: string
+          minLength: 1
+          maxLength: 35
+          example: en
+        description: Response language tag for the wego.com page (e.g. en, ar). Defaults to en.
+components:
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details, served as application/problem+json.
+      required:
+      - type
+      - title
+      - status
+      - instance
+      - code
+      - trace_id
+      properties:
+        type:
+          type: string
+          format: uri
+          description: Problem-type URI. `about:blank` for now (no semantics beyond the status); real type URIs follow once the public host is fixed.
+        title:
+          type: string
+          description: Fixed human summary, the same across a `code`.
+        status:
+          type: integer
+          description: The HTTP status code, repeated as a JSON number.
+        detail:
+          type: string
+          description: Instance-specific human explanation of this failure.
+        instance:
+          type: string
+          description: The request path this occurrence happened on.
+        code:
+          type: string
+          enum:
+          - validation_failed
+          - invalid_token
+          - insufficient_scope
+          - not_found
+          - rates_require_hotel_search
+          - rate_limited
+          - bad_gateway
+          - upstream_unavailable
+          - upstream_rate_limited
+          - internal_error
+          description: Stable machine token from a closed enum – the field an agent branches on.
+        trace_id:
+          type: string
+          description: Correlates this response to its logs; also returned in the `x-trace-id` response header.
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'Wego auth server access token, sent as `Authorization: Bearer <token>` (RFC 6750).'
+    oauth2:
+      type: oauth2
+      description: OAuth2 authorization-code flow (PKCE supported) against the Wego auth server.
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.wego.com/user-auth/v2/users/oauth/authorize
+          tokenUrl: https://auth.wego.com/user-auth/v2/users/oauth/token
+          x-scalar-client-id: 251815b9647317f4895122fd4924b7d44541d8fcc27be528435e3ad9bbf7e1ee
+          x-usePkce: SHA-256
+          scopes:
+            openid: OpenID Connect sign-in.
+            profile: Basic profile claims.
+            users: User identity for the API.
+      x-default-scopes:
+      - openid
+      - profile
+      - users

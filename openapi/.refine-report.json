@@ -1,0 +1,34 @@
+{
+  "provider": "wego",
+  "sources": [
+    "_original/wego-api-openapi.json"
+  ],
+  "outputs": [
+    "wego-countries-api-openapi.yml",
+    "wego-feedback-api-openapi.yml",
+    "wego-flights-api-openapi.yml",
+    "wego-health-api-openapi.yml",
+    "wego-hotels-api-openapi.yml",
+    "wego-places-api-openapi.yml",
+    "wego-user-api-openapi.yml"
+  ],
+  "archived": [],
+  "errors": [],
+  "warnings": [],
+  "notes": [
+    "sourced from openapi/_original/ (1 archived document(s)); previously refined output at the top level was skipped rather than re-split",
+    "wego-api-openapi.json: upgraded openapi 3.1.0 -> OpenAPI 3.2.0",
+    "wego-api-openapi.json: tagged paths GET /health -> Health",
+    "wego-api-openapi.json: declared missing tag: Health",
+    "apis.yml register: already-registered"
+  ],
+  "skipped": [
+    "wego-countries-api-openapi.yml: previously refined output, superseded by openapi/_original/",
+    "wego-feedback-api-openapi.yml: previously refined output, superseded by openapi/_original/",
+    "wego-flights-api-openapi.yml: previously refined output, superseded by openapi/_original/",
+    "wego-health-api-openapi.yml: previously refined output, superseded by openapi/_original/",
+    "wego-hotels-api-openapi.yml: previously refined output, superseded by openapi/_original/",
+    "wego-places-api-openapi.yml: previously refined output, superseded by openapi/_original/",
+    "wego-user-api-openapi.yml: previously refined output, superseded by openapi/_original/"
+  ]
+}

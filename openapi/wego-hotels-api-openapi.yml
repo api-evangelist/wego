@@ -1,0 +1,1939 @@
+openapi: 3.2.0
+info:
+  title: Wego Hotels API
+  description: 'Wego''s travel API: places, flights, hotels and fares. Please see https://docs.wego.com for more details.'
+  version: 0.19.0
+servers:
+- url: https://api.wego.com
+security:
+- oauth2: []
+- bearerAuth: []
+tags:
+- name: Hotels
+  description: 'The hotel funnel, same shape as flights: `createHotelSearch`, `getHotelSearchResults` for ranked hotels, `getHotel` for static detail, `getHotelRates` for bookable rooms and rates (cheapest first, with board and refundability), `getHotelRateBookingLink` for the wego.com checkout URL.'
+paths:
+  /v1/hotels/searches:
+    post:
+      operationId: createHotelSearch
+      tags:
+      - Hotels
+      summary: Create a hotel search
+      description: Creates a Book-on-Wego hotel search (city, single hotel, or geo point) and returns its opaque searchId plus the occupancy priced upstream (resolved child ages, incl. the age-8 fallback when none supplied). Poll /results for ranked hotels. A hotelId search is the only one getHotelRates accepts.
+      responses:
+        '201':
+          description: Search created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  searchId:
+                    type: string
+                    description: Opaque id for the created search.
+                  occupancy:
+                    type: object
+                    properties:
+                      adults:
+                        type: integer
+                        minimum: -9007199254740991
+                        maximum: 9007199254740991
+                        description: Adults priced upstream for this search.
+                      childrenAges:
+                        type: array
+                        items:
+                          type: integer
+                          minimum: -9007199254740991
+                          maximum: 9007199254740991
+                        description: Resolved per-child ages actually sent upstream (age-8 fallback when omitted).
+                      rooms:
+                        type: integer
+                        minimum: -9007199254740991
+                        maximum: 9007199254740991
+                        description: Rooms priced upstream for this search.
+                    required:
+                    - adults
+                    - childrenAges
+                    - rooms
+                    description: The occupancy priced upstream for this search (ages resolved, incl. fallback).
+                  siteCode:
+                    type: string
+                    description: The site code (Wego market) the search was created for.
+                  siteCodeSource:
+                    type: string
+                    enum:
+                    - explicit
+                    - default
+                    description: 'How the API resolved siteCode: explicit (caller-supplied – including a market a client derived and passed) or default (US, no site supplied).'
+                required:
+                - searchId
+                - occupancy
+                - siteCode
+                - siteCodeSource
+        '400':
+          description: Invalid request parameters.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Unknown hotel.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: The upstream hotels service returned an invalid response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The hotels service is unavailable (`upstream_unavailable`) or rate-limited upstream (`upstream_rate_limited`); retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cityCode:
+                  type: string
+                  pattern: ^[A-Z]{3}$
+                  example: DXB
+                  description: City code to search. One destination only, see oneOf.
+                hotelId:
+                  type: integer
+                  minimum: 1
+                  maximum: 9007199254740991
+                  description: Search a single hotel by id. One destination only, see oneOf.
+                lat:
+                  type: number
+                  minimum: -90
+                  maximum: 90
+                  description: Latitude. Must be paired with lng.
+                lng:
+                  type: number
+                  minimum: -180
+                  maximum: 180
+                  description: Longitude. Must be paired with lat.
+                radius:
+                  default: 10
+                  description: Search radius in km around lat/lng.
+                  type: number
+                  minimum: 1
+                  maximum: 50
+                checkIn:
+                  type: string
+                  pattern: ^\d{4}-\d{2}-\d{2}$
+                  description: Check-in date, YYYY-MM-DD. Not in the past.
+                checkOut:
+                  type: string
+                  pattern: ^\d{4}-\d{2}-\d{2}$
+                  description: Check-out date, YYYY-MM-DD. Must be after checkIn.
+                adults:
+                  default: 2
+                  description: Adults across the search (1-9). Defaults to 2, since a room sleeps two. Note the flight search defaults adults to 1.
+                  type: integer
+                  minimum: 1
+                  maximum: 9
+                children:
+                  default: 0
+                  description: Children across the search (0-8). Defaults to 0.
+                  type: integer
+                  minimum: 0
+                  maximum: 8
+                rooms:
+                  default: 1
+                  description: Rooms to price (1-4). Defaults to 1; cannot exceed adults.
+                  type: integer
+                  minimum: 1
+                  maximum: 4
+                childrenAges:
+                  description: Per-child ages (integers 0–17). When provided, the count must equal `children`. When omitted, each child is priced at age 8 (the documented fallback).
+                  maxItems: 8
+                  type: array
+                  items:
+                    type: integer
+                    minimum: 0
+                    maximum: 17
+                currency:
+                  default: USD
+                  description: Pricing currency as a 3-letter ISO 4217 code. Defaults to USD.
+                  type: string
+                  pattern: ^[A-Z]{3}$
+                locale:
+                  default: en
+                  description: Response language tag (e.g. en, ar). Defaults to en.
+                  type: string
+                  minLength: 1
+                  maxLength: 35
+                siteCode:
+                  type: string
+                  pattern: ^[A-Z]{2}$
+                  description: 'Wego market (point of sale) as a 2-letter code, e.g. AE. Optional: if omitted the API defaults to US. A client that knows the user''s market (the wego CLI derives it from the id_token) passes it as an explicit siteCode.'
+              required:
+              - checkIn
+              - checkOut
+              additionalProperties: false
+              oneOf:
+              - required:
+                - cityCode
+              - required:
+                - hotelId
+              - required:
+                - lat
+                - lng
+  /v1/hotels/searches/{searchId}/results:
+    get:
+      operationId: getHotelSearchResults
+      tags:
+      - Hotels
+      summary: Read hotel search results
+      description: Lean list cards; default 10, max 50 per page. searchComplete:true terminal, false advisory; poll snapshotCandidateCount to a steady non-zero. totalCandidates===0 = filters only if totalBeforeFilters>0, else none bookable once complete. ?refundable=true = witnessed.
+      responses:
+        '200':
+          description: Ranked hotels, as lean list cards. Amenities, the full image list, the address and brand/chain are not on a card – read the hotel for the one row you picked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  searchId:
+                    type: string
+                    description: The id of the search this snapshot belongs to.
+                  currencyCode:
+                    type: string
+                    description: Currency the prices in this snapshot are quoted in.
+                  searchComplete:
+                    type: boolean
+                    description: Upstream aggregation flag. true is authoritative/terminal; conclude NO BOOK-ON-WEGO BOOKABLE INVENTORY only when true AND metadata.totalBeforeFilters === 0 – never that no hotel exists, since only Book-on-Wego inventory was requested. A zero totalCandidates on its own means only that this read's filters matched nothing, and an empty page with totalCandidates > 0 is pagination. false is inconclusive, so watch metadata.snapshotCandidateCount convergence to stop sooner.
+                  stay:
+                    type: object
+                    properties:
+                      checkIn:
+                        type: string
+                        description: Check-in date priced upstream, YYYY-MM-DD.
+                      checkOut:
+                        type: string
+                        description: Check-out date priced upstream, YYYY-MM-DD.
+                      nights:
+                        type: integer
+                        minimum: -9007199254740991
+                        maximum: 9007199254740991
+                        description: Nights between checkIn and checkOut. price.total covers this many nights of price.amountPerNight.
+                      occupancy:
+                        type: object
+                        properties:
+                          adults:
+                            type: integer
+                            minimum: -9007199254740991
+                            maximum: 9007199254740991
+                            description: Adults priced upstream for this search.
+                          childrenAges:
+                            type: array
+                            items:
+                              type: integer
+                              minimum: -9007199254740991
+                              maximum: 9007199254740991
+                            description: Resolved per-child ages actually sent upstream (age-8 fallback when omitted).
+                          rooms:
+                            type: integer
+                            minimum: -9007199254740991
+                            maximum: 9007199254740991
+                            description: Rooms priced upstream for this search.
+                        required:
+                        - adults
+                        - childrenAges
+                        - rooms
+                        description: The occupancy priced upstream for this search (ages resolved, incl. fallback).
+                    required:
+                    - checkIn
+                    - checkOut
+                    - nights
+                    - occupancy
+                    description: 'What upstream priced: the dates and occupancy every price on this read covers. Present when upstream states them.'
+                  metadata:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                        minimum: 1
+                        maximum: 9007199254740991
+                        description: 1-based page number of this snapshot.
+                      pageSize:
+                        type: integer
+                        minimum: 1
+                        maximum: 9007199254740991
+                        description: Hotels requested per page.
+                      resultCount:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: Hotels on this page. The page only – judge a filter on totalCandidates.
+                      totalCandidates:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: Hotels matching this read's filters across the snapshot – the count that judges a filter, not the page. A filter that matched nothing is totalCandidates 0 with totalBeforeFilters above 0.
+                      totalBeforeFilters:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: Hotels that survived the Book-on-Wego join, before this read's filters ran. A filter that matched nothing is totalCandidates === 0 with totalBeforeFilters > 0. Zero means no Book-on-Wego-bookable inventory surfaced for these dates – it is NOT proof that no hotel exists, since the join runs over a sampled rate list. Equal to totalCandidates on an unfiltered read.
+                      filterOptions:
+                        type: object
+                        properties:
+                          amenities:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                  description: The term the matching filter query param accepts, verbatim.
+                                count:
+                                  type: integer
+                                  minimum: 0
+                                  maximum: 9007199254740991
+                                  description: Hotels carrying this value on an unfiltered read. For the substring-matched vocabularies (amenities, propertyTypes, brands, chains, districts) it is a LOWER BOUND, since one term can span several values. For the code-keyed ones (rateTypes, guestTypes) it is EXACT, because those terms are matched exactly rather than as substrings - and a guestTypes count spans only the hotels upstream scored for that cohort, which is fewer than carry an all-guests score.
+                              required:
+                              - name
+                              - count
+                            description: Amenity terms present in this snapshot, by count.
+                          propertyTypes:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                  description: The term the matching filter query param accepts, verbatim.
+                                count:
+                                  type: integer
+                                  minimum: 0
+                                  maximum: 9007199254740991
+                                  description: Hotels carrying this value on an unfiltered read. For the substring-matched vocabularies (amenities, propertyTypes, brands, chains, districts) it is a LOWER BOUND, since one term can span several values. For the code-keyed ones (rateTypes, guestTypes) it is EXACT, because those terms are matched exactly rather than as substrings - and a guestTypes count spans only the hotels upstream scored for that cohort, which is fewer than carry an all-guests score.
+                              required:
+                              - name
+                              - count
+                            description: Property-type terms present in this snapshot, by count.
+                          brands:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                  description: The term the matching filter query param accepts, verbatim.
+                                count:
+                                  type: integer
+                                  minimum: 0
+                                  maximum: 9007199254740991
+                                  description: Hotels carrying this value on an unfiltered read. For the substring-matched vocabularies (amenities, propertyTypes, brands, chains, districts) it is a LOWER BOUND, since one term can span several values. For the code-keyed ones (rateTypes, guestTypes) it is EXACT, because those terms are matched exactly rather than as substrings - and a guestTypes count spans only the hotels upstream scored for that cohort, which is fewer than carry an all-guests score.
+                              required:
+                              - name
+                              - count
+                            description: Brand terms present in this snapshot, by count.
+                          chains:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                  description: The term the matching filter query param accepts, verbatim.
+                                count:
+                                  type: integer
+                                  minimum: 0
+                                  maximum: 9007199254740991
+                                  description: Hotels carrying this value on an unfiltered read. For the substring-matched vocabularies (amenities, propertyTypes, brands, chains, districts) it is a LOWER BOUND, since one term can span several values. For the code-keyed ones (rateTypes, guestTypes) it is EXACT, because those terms are matched exactly rather than as substrings - and a guestTypes count spans only the hotels upstream scored for that cohort, which is fewer than carry an all-guests score.
+                              required:
+                              - name
+                              - count
+                            description: Chain terms present in this snapshot, by count.
+                          districts:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                  description: The term the matching filter query param accepts, verbatim.
+                                count:
+                                  type: integer
+                                  minimum: 0
+                                  maximum: 9007199254740991
+                                  description: Hotels carrying this value on an unfiltered read. For the substring-matched vocabularies (amenities, propertyTypes, brands, chains, districts) it is a LOWER BOUND, since one term can span several values. For the code-keyed ones (rateTypes, guestTypes) it is EXACT, because those terms are matched exactly rather than as substrings - and a guestTypes count spans only the hotels upstream scored for that cohort, which is fewer than carry an all-guests score.
+                              required:
+                              - name
+                              - count
+                            description: District terms present in this snapshot, by count.
+                          rateTypes:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                  description: The term the matching filter query param accepts, verbatim.
+                                count:
+                                  type: integer
+                                  minimum: 0
+                                  maximum: 9007199254740991
+                                  description: Hotels carrying this value on an unfiltered read. For the substring-matched vocabularies (amenities, propertyTypes, brands, chains, districts) it is a LOWER BOUND, since one term can span several values. For the code-keyed ones (rateTypes, guestTypes) it is EXACT, because those terms are matched exactly rather than as substrings - and a guestTypes count spans only the hotels upstream scored for that cohort, which is fewer than carry an all-guests score.
+                              required:
+                              - name
+                              - count
+                            description: Rate types witnessed on this snapshot's Book-on-Wego rates, by hotel count – the vocabulary ?rate-types= accepts (e.g. breakfast_included, free_cancellation). Unlike every other vocabulary here the name is a stable upstream CODE, not a localized display name, so it is matched EXACTLY rather than as a substring and reads the same under any locale. Each count is the number of hotels with at least one rate carrying that type.
+                          guestTypes:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                  description: The term the matching filter query param accepts, verbatim.
+                                count:
+                                  type: integer
+                                  minimum: 0
+                                  maximum: 9007199254740991
+                                  description: Hotels carrying this value on an unfiltered read. For the substring-matched vocabularies (amenities, propertyTypes, brands, chains, districts) it is a LOWER BOUND, since one term can span several values. For the code-keyed ones (rateTypes, guestTypes) it is EXACT, because those terms are matched exactly rather than as substrings - and a guestTypes count spans only the hotels upstream scored for that cohort, which is fewer than carry an all-guests score.
+                              required:
+                              - name
+                              - count
+                            description: 'Guest cohorts this snapshot carries ratings for, by hotel count – the vocabulary ?guest-type= accepts (business, couple, family, solo). Like rateTypes the name is a stable CODE matched exactly, not a localized display name, so the counts are precise. Each count is the number of hotels upstream scored for that cohort, which is FEWER than the hotels carrying an all-guests score: upstream publishes no thin cohort rows, so a hotel missing from a cohort''s count has too little data for it rather than a poor rating. Spelled differently from the /reviews ?guest-type= vocabulary (family here, family_with_children there) because the two upstreams segment guests differently.'
+                          priceRange:
+                            type: object
+                            properties:
+                              min:
+                                type: number
+                                description: The cheapest hotel's all-in nightly figure, in the response currency.
+                              max:
+                                type: number
+                                description: The dearest hotel's all-in nightly figure, in the response currency.
+                            required:
+                            - min
+                            - max
+                            description: 'The span the min-price / max-price bounds compare against, on their own basis: amountPerNight plus every per-night charge the card publishes beside it, localTaxPerNight and taxAmountPerNight where present, covering every room in the search. Both ends are attainable, since the bounds are inclusive, so min-price at min and max-price at max each keep the whole snapshot, and a bound outside the span returns nothing. Read over each hotel''s headline price, so with ?refundable=true the bounds move to lowestRefundablePrice and can reach past max. Folded over the same population as totalBeforeFilters, so it does not narrow as other filters bite, and it still moves while searchComplete is false. Absent when the snapshot holds no hotel.'
+                        required:
+                        - amenities
+                        - propertyTypes
+                        - brands
+                        - chains
+                        - districts
+                        - rateTypes
+                        - guestTypes
+                        description: 'The filterable vocabulary of the hotels in this snapshot, ordered by count, over the same population as totalBeforeFilters. The amenities / property-types / brands / chains / districts query params take an entry''s name field VERBATIM (matched case-insensitively as a substring), so pick from here rather than guessing a synonym. A term listed here matches AT LEAST its count on an unfiltered read; the count is a lower bound, since one term can span several values (Pool also matches Indoor Pool). rateTypes and guestTypes are the exceptions: their names are stable codes, matched exactly rather than as substrings, so their counts are precise rather than a lower bound. guestTypes counts a smaller population than the rest for a different reason - it counts only the hotels upstream scored for that cohort, and upstream publishes no thin cohort rows, so a hotel absent from a cohort has too little data for it rather than a poor rating. Still growing while searchComplete is false. priceRange does the same job for the numeric bounds: it states the span min-price / max-price are measured on, so read it before choosing either.'
+                      hasMore:
+                        type: boolean
+                        description: Another page of hotels follows.
+                      snapshotCandidateCount:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: Upstream aggregation counter – the practical early convergence signal. Two spaced (not back-to-back), equal, non-zero reads ≈ settled enough to render; it stabilizes well before searchComplete flips, so use it to stop polling sooner. A heuristic, not proof of completion (searchComplete:true is that). Not the same as totalCandidates (the post-Book-on-Wego-join hotel count).
+                      createdAt:
+                        description: When this search was created (ISO 8601) – the freshness anchor for these prices. A search older than about 10 minutes may answer 404 as expired. Absent when the search service omits it.
+                        type: string
+                      currencyCode:
+                        type: string
+                        description: 'The currency this read ASKED upstream for, and the one every price on it is meant to be in. Read it beside currencyCodeSource before you show a number: a price computed in the wrong currency renders as a perfectly normal price, with no error and no odd shape to notice, so the response states which one rather than leaving it to be inferred. Where the operation also publishes a top-level currencyCode, that field reports the currency the prices actually came back in; the two agree unless upstream declined to reprice.'
+                      currencyCodeSource:
+                        type: string
+                        enum:
+                        - explicit
+                        - default
+                        description: 'How the API resolved currencyCode: explicit (the caller sent currency – including a value equal to the default) or default (USD, no currency sent). A default here is the one signal that the request never carried the currency you meant.'
+                      locale:
+                        type: string
+                        description: The language tag this read asked upstream for – what any localized text on it was resolved in (room and board names, airline and airport names, review prose).
+                      localeSource:
+                        type: string
+                        enum:
+                        - explicit
+                        - default
+                        description: 'How the API resolved locale: explicit (the caller sent locale – including a value equal to the default) or default (en, no locale sent). A default here explains text that came back in a language the caller did not ask for.'
+                    required:
+                    - page
+                    - pageSize
+                    - resultCount
+                    - totalCandidates
+                    - totalBeforeFilters
+                    - filterOptions
+                    - hasMore
+                    - snapshotCandidateCount
+                    - currencyCode
+                    - currencyCodeSource
+                    - locale
+                    - localeSource
+                    description: Pagination, the snapshot's filter vocabulary, the settle counters for this read, and what it resolved currency and locale to.
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        hotelId:
+                          type: number
+                          description: The hotel's numeric id; read its detail with GET /v1/hotels/{hotelId}.
+                        name:
+                          type: string
+                          description: Hotel display name.
+                        pageUrl:
+                          type: string
+                          description: The hotel's page on wego.com. It is not tied to a search, so it keeps working after this search expires. Give it to a traveller who wants to look at the hotel, and use it in anything that is saved or sent on. It opens with no dates set.
+                        star:
+                          description: Star rating (1-5), when classified.
+                          type: number
+                        review:
+                          description: Aggregate guest review score and count.
+                          type: object
+                          properties:
+                            score:
+                              type: number
+                              description: Aggregate guest review score (0-10).
+                            count:
+                              type: number
+                              description: Number of guest reviews behind the score.
+                          required:
+                          - score
+                          - count
+                        reviewsByGuestType:
+                          description: 'Guest review score and count per cohort, on the same 0-10 scale as review (which is the all-guests figure). These are the exact values ?guest-type= accepts and the same vocabulary metadata.filterOptions.guestTypes counts. A cohort is present only when upstream scored it, and an ABSENT cohort means too little data for that cohort, never a low score - upstream publishes no thin cohort rows. Read these to explain a pick as well as make one: a hotel rated 8.5 overall and 7.6 by families is a different recommendation than one rated 8.5 by both. Omitted when no cohort was scored.'
+                          type: object
+                          properties:
+                            business:
+                              description: How business travellers rate this hotel.
+                              type: object
+                              properties:
+                                score:
+                                  type: number
+                                  description: Guest review score for this cohort (0-10).
+                                count:
+                                  type: number
+                                  description: Number of that cohort's reviews behind the score.
+                              required:
+                              - score
+                              - count
+                            couple:
+                              description: How couples rate this hotel.
+                              type: object
+                              properties:
+                                score:
+                                  type: number
+                                  description: Guest review score for this cohort (0-10).
+                                count:
+                                  type: number
+                                  description: Number of that cohort's reviews behind the score.
+                              required:
+                              - score
+                              - count
+                            family:
+                              description: How families rate this hotel.
+                              type: object
+                              properties:
+                                score:
+                                  type: number
+                                  description: Guest review score for this cohort (0-10).
+                                count:
+                                  type: number
+                                  description: Number of that cohort's reviews behind the score.
+                              required:
+                              - score
+                              - count
+                            solo:
+                              description: How solo travellers rate this hotel.
+                              type: object
+                              properties:
+                                score:
+                                  type: number
+                                  description: Guest review score for this cohort (0-10).
+                                count:
+                                  type: number
+                                  description: Number of that cohort's reviews behind the score.
+                              required:
+                              - score
+                              - count
+                        price:
+                          type: object
+                          properties:
+                            scope:
+                              type: string
+                              const: booking
+                              description: 'What every amount here covers: the whole booking, all rooms in the search.'
+                            amountPerNight:
+                              type: number
+                              description: One night of the whole booking, in the response currency, covering every room. Excludes localTaxPerNight, and taxAmountPerNight when that field appears. Rounded to a whole currency unit upstream; total is the exact stay figure.
+                            taxAmountPerNight:
+                              description: Per-night tax charged on top of amountPerNight, in the response currency. Present only when the amount excludes it; absent means amountPerNight already covers any such tax, which is the usual case. Add it the same way as localTaxPerNight.
+                              type: number
+                            localTaxPerNight:
+                              description: Per-night local tax (city/tourism/municipality), charged on top of amountPerNight. wego.com adds it to the price it displays. Present when upstream reports the tax, where 0 means none charged. Absent when upstream reports it as unknown.
+                              type: number
+                              minimum: 0
+                            totalLocalTax:
+                              description: Stay total of local tax as reported upstream, which rounds the nightly figure. Present when upstream reports the tax. Absent when upstream reports it as unknown.
+                              type: number
+                              minimum: 0
+                            total:
+                              description: Stay total in the response currency. Excludes totalLocalTax, mirroring amountPerNight.
+                              type: number
+                            deal:
+                              description: The discount advertised on this rate, absent when the rate carries none. Describes THIS price object, so with ?refundable=true it describes the refundable rate the card switched to.
+                              type: object
+                              properties:
+                                label:
+                                  description: 'The offer''s own tag, e.g. ''Best Deal''. Its presence also says where wasPerNight came from: see that field.'
+                                  type: string
+                                percentOff:
+                                  type: integer
+                                  minimum: 1
+                                  maximum: 99
+                                  description: The offer's discount as a whole percent. A tagged offer's percent wins over a usual-price one, matching the site's precedence, and the two often differ. wego.com renders a percentage only for an UNTAGGED offer; a tagged one it shows as its label plus a crossed-out price, so do not attribute this figure to what the page displays. Always describes the same offer as wasPerNight, so the pair never disagree.
+                                wasPerNight:
+                                  description: Pre-discount per-night price, on amountPerNight's basis so the two subtract cleanly. When label is present this is COMPUTED back from the offer's unrounded discount, since a tagged offer carries no pre-discount price of its own and wego.com renders the same computed figure; quote it as approximate, and expect it to differ slightly from a figure you derive using the rounded percentOff. When label is absent it is the quoted pre-discount price itself.
+                                  type: number
+                                wasTotal:
+                                  description: Pre-discount stay total, on total's basis. Computed or quoted on the same rule as wasPerNight.
+                                  type: number
+                                promoCode:
+                                  description: Promo code the traveller enters at checkout, when the offer carries one. Most live offers are provider discounts with no code.
+                                  type: string
+                              required:
+                              - percentOff
+                            totalUsd:
+                              type: number
+                              description: Stay total in USD, the cross-currency ranking key.
+                            currency:
+                              type: string
+                              description: ISO 4217 currency of these amounts.
+                          required:
+                          - scope
+                          - amountPerNight
+                          - totalUsd
+                          - currency
+                          description: 'A card''s per-night and stay price. Every amount covers the whole booking, all rooms in the search, so quote these figures as they stand. Upstream rounds per booking, so total is the exact stay figure and amountPerNight is one night of it. Any per-night figure published beside amountPerNight is charged ON TOP of it: add localTaxPerNight, and taxAmountPerNight when it appears, to reach what a guest pays and what the price sorts and bounds rank on.'
+                        refundable:
+                          type: string
+                          enum:
+                          - available
+                          - unknown
+                          description: Refundability WITNESS, not a boolean. 'available' = a free-cancellation Book-on-Wego rate was seen in this snapshot. 'unknown' = none was seen, which is NOT evidence that none exists – this envelope carries only a sample of each hotel's rates, so a negative is not computable here. To answer 'does this hotel have a refundable room', read the hotel's rooms/rates.
+                        lowestRefundablePrice:
+                          description: Lowest refundable Book-on-Wego rate. Present exactly when refundable is 'available'.
+                          type: object
+                          properties:
+                            scope:
+                              type: string
+                              const: booking
+                              description: 'What every amount here covers: the whole booking, all rooms in the search.'
+                            amountPerNight:
+                              type: number
+                              description: One night of the whole booking, in the response currency, covering every room. Excludes localTaxPerNight, and taxAmountPerNight when that field appears. Rounded to a whole currency unit upstream; total is the exact stay figure.
+                            taxAmountPerNight:
+                              description: Per-night tax charged on top of amountPerNight, in the response currency. Present only when the amount excludes it; absent means amountPerNight already covers any such tax, which is the usual case. Add it the same way as localTaxPerNight.
+                              type: number
+                            localTaxPerNight:
+                              description: Per-night local tax (city/tourism/municipality), charged on top of amountPerNight. wego.com adds it to the price it displays. Present when upstream reports the tax, where 0 means none charged. Absent when upstream reports it as unknown.
+                              type: number
+                              minimum: 0
+                            totalLocalTax:
+                              description: Stay total of local tax as reported upstream, which rounds the nightly figure. Present when upstream reports the tax. Absent when upstream reports it as unknown.
+                              type: number
+                              minimum: 0
+                            total:
+                              description: Stay total in the response currency. Excludes totalLocalTax, mirroring amountPerNight.
+                              type: number
+                            deal:
+                              description: The discount advertised on this rate, absent when the rate carries none. Describes THIS price object, so with ?refundable=true it describes the refundable rate the card switched to.
+                              type: object
+                              properties:
+                                label:
+                                  description: 'The offer''s own tag, e.g. ''Best Deal''. Its presence also says where wasPerNight came from: see that field.'
+                                  type: string
+                                percentOff:
+                                  type: integer
+                                  minimum: 1
+                                  maximum: 99
+                                  description: The offer's discount as a whole percent. A tagged offer's percent wins over a usual-price one, matching the site's precedence, and the two often differ. wego.com renders a percentage only for an UNTAGGED offer; a tagged one it shows as its label plus a crossed-out price, so do not attribute this figure to what the page displays. Always describes the same offer as wasPerNight, so the pair never disagree.
+                                wasPerNight:
+                                  description: Pre-discount per-night price, on amountPerNight's basis so the two subtract cleanly. When label is present this is COMPUTED back from the offer's unrounded discount, since a tagged offer carries no pre-discount price of its own and wego.com renders the same computed figure; quote it as approximate, and expect it to differ slightly from a figure you derive using the rounded percentOff. When label is absent it is the quoted pre-discount price itself.
+                                  type: number
+                                wasTotal:
+                                  description: Pre-discount stay total, on total's basis. Computed or quoted on the same rule as wasPerNight.
+                                  type: number
+                                promoCode:
+                                  description: Promo code the traveller enters at checkout, when the offer carries one. Most live offers are provider discounts with no code.
+                                  type: string
+                              required:
+                              - percentOff
+                            totalUsd:
+                              type: number
+                              description: Stay total in USD, the cross-currency ranking key.
+                            currency:
+                              type: string
+                              description: ISO 4217 currency of these amounts.
+                          required:
+                          - scope
+                          - amountPerNight
+                          - totalUsd
+                          - currency
+                        rateTypes:
+                          description: 'Rate types WITNESSED on this hotel''s Book-on-Wego rates in this snapshot (e.g. breakfast_included, free_cancellation), sorted. A witness on the same terms as refundable, never a negative: this envelope carries only a sample of each hotel''s rates, so an absent type is not evidence the hotel lacks it. These are the exact values ?rate-types= accepts, and the same vocabulary metadata.filterOptions.rateTypes counts. Omitted when no rate type was witnessed.'
+                          type: array
+                          items:
+                            type: string
+                        cityName:
+                          description: City the hotel is in.
+                          type: string
+                        districtName:
+                          description: District or neighbourhood the hotel is in.
+                          type: string
+                        lat:
+                          description: Hotel latitude in decimal degrees. Use with lng to compute distance to any landmark you choose.
+                          type: number
+                        lng:
+                          description: Hotel longitude in decimal degrees. Use with lat to compute distance to any landmark you choose.
+                          type: number
+                        distanceToCityCentre:
+                          description: Kilometres from the city's place-record coordinate (the point GET /v1/places reports for the city), and the ?sort=distance_asc key. Where a city record covers an island, a city-state or a whole administrative area, that point can sit far from the commercial centre. For locality prefer the districts filter, or compute distance from lat/lng to a landmark you choose. Present when upstream reports it.
+                          type: number
+                        image:
+                          description: Primary image URL, if any.
+                          type: string
+                        badges:
+                          type: array
+                          items:
+                            type: string
+                          description: Full-result-set badges this hotel wins (e.g. cheapest).
+                      required:
+                      - hotelId
+                      - name
+                      - pageUrl
+                      - price
+                      - refundable
+                      - badges
+                    description: The requested page of ranked hotels, as list cards.
+                required:
+                - searchId
+                - currencyCode
+                - searchComplete
+                - metadata
+                - results
+        '400':
+          description: Invalid request parameters.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Unknown or expired search.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: The upstream hotels service returned an invalid response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The hotels service is unavailable (`upstream_unavailable`) or rate-limited upstream (`upstream_rate_limited`); retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - in: path
+        name: searchId
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9._:~=-]{1,256}$
+        required: true
+        description: The opaque searchId returned by createHotelSearch. Ids expire; a 404 means the search is unknown or gone – create a new one.
+      - in: query
+        name: page
+        schema:
+          default: 1
+          type: integer
+          minimum: 1
+          maximum: 100
+        description: Page number, 1-based (max 100). Defaults to 1.
+      - in: query
+        name: pageSize
+        schema:
+          default: 10
+          type: integer
+          minimum: 1
+          maximum: 50
+        description: Results per page (1-50). Defaults to 10.
+      - in: query
+        name: sort
+        schema:
+          default: relevance
+          type: string
+          enum:
+          - relevance
+          - price_asc
+          - price_desc
+          - star_desc
+          - review_score_desc
+          - guest_rating_desc
+          - distance_asc
+        description: Sort order. relevance (default) is the metasearch ranking; price_asc / price_desc by cheapest per-night rate; star_desc by star; review_score_desc by guest score; guest_rating_desc by the ?guest-type= cohort's own score, which requires that param (a hotel upstream did not score for the cohort sorts last, never zero-filled); distance_asc by distance to the city's place-record coordinate (see distanceToCityCentre). With ?refundable=true the price sorts key off the cheapest refundable rate.
+      - in: query
+        name: currency
+        schema:
+          default: USD
+          type: string
+          pattern: ^[A-Z]{3}$
+        description: Pricing currency as a 3-letter ISO 4217 code (e.g. AED). Defaults to USD.
+      - in: query
+        name: locale
+        schema:
+          default: en
+          type: string
+          minLength: 1
+          maxLength: 35
+        description: Response language tag (e.g. en, ar). Defaults to en.
+      - in: query
+        name: min-star
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 5
+        description: Keep hotels with at least this star rating (1-5).
+      - in: query
+        name: max-star
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 5
+        description: Keep hotels with at most this star rating (1-5).
+      - in: query
+        name: min-review-score
+        schema:
+          type: number
+          minimum: 0
+          maximum: 10
+        description: Keep hotels whose ALL-GUESTS review score is at least this (0-10). This is the everybody-rated-it-well question; for a named guest cohort use ?guest-type= with ?min-guest-rating=, which is a different number on most hotels.
+      - in: query
+        name: guest-type
+        schema:
+          type: string
+          enum:
+          - business
+          - couple
+          - family
+          - solo
+        description: 'The guest cohort ?min-guest-rating= and sort=guest_rating_desc judge a hotel by: business, couple, family or solo. Read the vocabulary and this snapshot''s per-cohort hotel counts from metadata.filterOptions.guestTypes. Must be sent with ?min-guest-rating= or sort=guest_rating_desc, and both of those require it - a cohort with nothing to apply it to is rejected rather than silently ignored. Spelled differently from the /reviews ?guest-type= vocabulary (family here, family_with_children there) because the two upstreams segment guests differently; business exists only here and extended_group only there.'
+      - in: query
+        name: min-guest-rating
+        schema:
+          type: number
+          minimum: 0
+          maximum: 10
+        description: 'Keep hotels the ?guest-type= cohort rates at least this (0-10). Requires ?guest-type=. Judged on that cohort''s own score, not the all-guests one: on a settled 420-hotel snapshot, of the 299 hotels scored for both, 58% had a family score at least 3 points from their overall one. A hotel upstream did not score for the cohort is DROPPED, and that absence means too little cohort data rather than a low score - upstream publishes no thin cohort rows, so a cohort score it does publish rests on more reviews than the all-guests figure sometimes does.'
+      - in: query
+        name: min-price
+        schema:
+          type: number
+          minimum: 0
+          maximum: 1000000
+        description: 'Minimum price (inclusive), in the response currency. Bounds the all-in nightly figure: amountPerNight plus every per-night charge the card publishes beside it, localTaxPerNight and taxAmountPerNight where present. That figure covers every room in the search, so multiply a per-room budget by the room count in stay.occupancy.rooms. Read metadata.filterOptions.priceRange for the bounds this snapshot spans. With ?refundable=true it bounds the cheapest refundable rate.'
+      - in: query
+        name: max-price
+        schema:
+          type: number
+          minimum: 0
+          maximum: 1000000
+        description: 'Maximum price (inclusive), in the response currency. Bounds the all-in nightly figure: amountPerNight plus every per-night charge the card publishes beside it, localTaxPerNight and taxAmountPerNight where present. That figure covers every room in the search, so multiply a per-room budget by the room count in stay.occupancy.rooms. Read metadata.filterOptions.priceRange for the bounds this snapshot spans. With ?refundable=true it bounds the cheapest refundable rate.'
+      - in: query
+        name: refundable
+        schema:
+          type: string
+          enum:
+          - '0'
+          - '1'
+          - 'true'
+          - 'false'
+        description: 'Keep only hotels with a witnessed refundable Book-on-Wego rate, so a ''cheapest refundable'' answer needs no per-hotel /rates calls. Exactly equivalent to ?rate-types=free_cancellation, and combines with it: this is the one rate type that has its own param. This is an UNDER-approximation: the results envelope is a rate sample, so a true keeps hotels with a seen refundable rate and a hotel''s absence is not authoritative – only GET /v1/hotels/{hotelId}/rates can prove a hotel has no refundable rate. Accepts true or false.'
+      - in: query
+        name: rate-types
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+        description: 'Keep hotels with a witnessed Book-on-Wego rate carrying ALL listed rate types (AND across terms; repeat or comma-separate), so ''only rooms with breakfast'' needs no per-hotel /rates calls. Read the vocabulary from metadata.filterOptions.rateTypes (e.g. breakfast_included, free_cancellation) – unlike every other list filter these are matched EXACTLY (case-insensitively), not as substrings, because they are stable upstream codes rather than localized display names. Several terms mean ONE rate carrying all of them, and while any rate-type filter is active the card price, the price bounds, the price sorts and the cheapest badge all key off that matching rate. Like refundable, an UNDER-approximation: the results envelope is a rate sample, so a hotel''s absence is not proof it lacks the type – only GET /v1/hotels/{hotelId}/rates can prove that.'
+      - in: query
+        name: deals-only
+        schema:
+          type: string
+          enum:
+          - '0'
+          - '1'
+          - 'true'
+          - 'false'
+        description: 'Keep only hotels whose card carries a price.deal, mirroring the ''today''s deals'' filter on wego.com. Judged on the very price object the card publishes, so the kept hotels and the deals shown always agree – with ?refundable=true that means the refundable rate must be the discounted one. Like refundable, this is an UNDER-approximation: the results envelope is a rate sample that grows while searchComplete is false, so a hotel''s absence is not proof it has no discount. Accepts true or false.'
+      - in: query
+        name: amenities
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+        description: Keep hotels offering ALL listed amenities (AND across terms; repeat or comma-separate). Each term is matched case-insensitively as a substring against the name field in metadata.filterOptions.amenities – pick terms from there (e.g. Fitness Centre), not a guessed synonym (gym). One term can span several values (Pool also matches Indoor Pool).
+      - in: query
+        name: property-types
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+        description: Keep hotels whose property type matches ANY listed term (OR; repeat or comma-separate). Matched case-insensitively as a substring against the name field in metadata.filterOptions.propertyTypes – pick from there rather than guessing.
+      - in: query
+        name: brands
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+        description: Keep hotels whose brand matches ANY listed term (OR; repeat or comma-separate). Matched case-insensitively as a substring against the name field in metadata.filterOptions.brands – pick from there rather than guessing. Names parent companies as well as individual brands, and a term matches an entry name rather than a corporate relationship, so a group filed under several sibling brands needs each of those names listed.
+      - in: query
+        name: chains
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+        description: Keep hotels whose chain matches ANY listed term (OR; repeat or comma-separate). Matched case-insensitively as a substring against the name field in metadata.filterOptions.chains – pick from there rather than guessing. Most hotels carry no chain and some entries name a loyalty programme, so a hotel group may be reachable only through brands, or split across both vocabularies.
+      - in: query
+        name: districts
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+        description: Keep hotels whose district matches ANY listed term (OR; repeat or comma-separate). Matched case-insensitively as a substring against the name field in metadata.filterOptions.districts – pick from there rather than guessing.
+      - in: query
+        name: view
+        schema:
+          default: card
+          type: string
+          enum:
+          - card
+        description: 'Response projection. `card` is the only value: the lean results-list projection (price summary, refundability witness, star/review, location names). The former `default` projection was removed in issue #1308 – read GET /v1/hotels/{hotelId} for a hotel''s amenities, images and address.'
+  /v1/hotels/{hotelId}/rates/{rateId}/booking-link:
+    get:
+      operationId: getHotelRateBookingLink
+      tags:
+      - Hotels
+      summary: Build a hotel booking link
+      description: 'Returns the wego.com checkout URL for a chosen rate. Pure build: no upstream call, no booking, no payment – only 400/401/429.'
+      responses:
+        '200':
+          description: The checkout URL, and the fact that it expires.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bookingUrl:
+                    type: string
+                    description: The wego.com hotel checkout URL for the rate.
+                  expires:
+                    type: boolean
+                    const: true
+                    description: 'Always true: this link is search-scoped and stops working when the rate''s search expires. A stale link loads an empty checkout page rather than erroring, so treat it as short-lived and re-price the rate to get a fresh one. To send someone a link that lasts, use the hotel''s pageUrl.'
+                required:
+                - bookingUrl
+                - expires
+        '400':
+          description: Invalid request parameters.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - in: path
+        name: hotelId
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 9007199254740991
+        required: true
+        description: The hotel's numeric id (a positive integer), as carried by hotel search results (results[].hotelId) and embedded in a rate id.
+      - in: path
+        name: rateId
+        schema:
+          type: string
+        required: true
+        description: 'The rate''s composed booking reference from GET /v1/hotels/{hotelId}/rates (rates[].id), forwarded verbatim. Grammar: {searchId}:hotels.wego.com:{hotelId}:{hash}:{idx} – checkout derives the search from the first segment, which is why the searchId query param is optional here. Opaque: do not construct or reorder it.'
+      - in: query
+        name: searchId
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9._:~=-]{1,256}$
+        description: Optional. The search the rate belongs to. When omitted it defaults to the rate id's first segment (exactly how the checkout page recovers it), so you rarely need to send it; when sent it must equal that segment or the request is rejected 400.
+      - in: query
+        name: locale
+        schema:
+          default: en
+          type: string
+          minLength: 1
+          maxLength: 35
+        description: Checkout page language tag (e.g. en, ar). Defaults to en.
+      - in: query
+        name: guests
+        schema:
+          type: string
+          maxLength: 64
+          pattern: ^[1-9]\d*(:\d+)*$
+        description: 'Optional packed occupancy token forwarded to checkout as guests. Grammar ^[1-9][0-9]*(:[0-9]+)*$: the first segment is the adult count (>= 1), then one child age per following :-segment – e.g. 2:4:9 is 2 adults plus children aged 4 and 9. The checkout-URL twin of the create body''s adults / childrenAges.'
+      - in: query
+        name: countryCode
+        schema:
+          type: string
+          pattern: ^[A-Z]{2}$
+        description: Optional ISO 3166-1 alpha-2 code forwarded verbatim to checkout as its country_code (the guest's booking country). It does NOT pick the wego.com host – that is siteCode. Send countryCode for the traveller's country, siteCode for the Wego market/domain.
+      - in: query
+        name: siteCode
+        schema:
+          type: string
+          pattern: ^[A-Z]{2}$
+        description: Wego market (point of sale) as a 2-letter code, e.g. AE; defaults to US. It selects the wego.com CHECKOUT HOST/domain – distinct from countryCode, which is passed through to the page as the guest's booking country and does not change the host.
+  /v1/hotels/search-link:
+    get:
+      operationId: getHotelSearchLink
+      tags:
+      - Hotels
+      summary: Build a durable wego.com hotel search link
+      description: 'Builds a shareable wego.com hotel-search URL from the caller''s own city, dates and occupancy. A pure, stateless string build: no search created. It carries no search-scoped id, so it does not expire: whoever opens it runs the search live.'
+      responses:
+        '200':
+          description: The durable wego.com hotel-search URL.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  searchUrl:
+                    type: string
+                    description: A wego.com hotel-search URL for this city, dates and occupancy. Opening it runs the search live.
+                  expires:
+                    type: boolean
+                    const: false
+                    description: 'Always false: the URL carries no search-scoped id, so it keeps working. The prices behind it are whatever a live search returns when it is opened.'
+                required:
+                - searchUrl
+                - expires
+                description: The durable wego.com hotel-search URL.
+        '400':
+          description: Invalid query parameters. checkIn must be a real calendar date and not in the past; checkOut must be after it; rooms is 1-4 and cannot be more than adults; childrenAges is required when children is above 0 and must have exactly that many entries.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - in: query
+        name: cityCode
+        schema:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: BKK
+        required: true
+        description: 'City code the link searches, e.g. BKK. Take it from a places result''s code or cityCode, never its numeric id. A lat/lng pair cannot be shared: wego.com serves no coordinate search URL. To link one hotel instead of a search, use the pageUrl that hotel carries.'
+      - in: query
+        name: checkIn
+        schema:
+          type: string
+          pattern: ^\d{4}-\d{2}-\d{2}$
+        required: true
+        description: Check-in date, YYYY-MM-DD. Not in the past.
+      - in: query
+        name: checkOut
+        schema:
+          type: string
+          pattern: ^\d{4}-\d{2}-\d{2}$
+        required: true
+        description: Check-out date, YYYY-MM-DD. Must be after checkIn.
+      - in: query
+        name: adults
+        schema:
+          default: 2
+          type: integer
+          minimum: 1
+          maximum: 9
+        description: Adults across the link's rooms (1-9). Defaults to 2.
+      - in: query
+        name: children
+        schema:
+          default: 0
+          type: integer
+          minimum: 0
+          maximum: 8
+        description: Children across the link's rooms (0-8). Defaults to 0. Sending more than 0 requires childrenAges.
+      - in: query
+        name: childrenAges
+        schema:
+          type: string
+          pattern: ^\d{1,2}(,\d{1,2})*$
+        description: 'Per-child ages as a comma-separated list of integers 0-17, e.g. 5,9. The count must equal children, and it is required whenever children is above 0: the create body prices a missing age at 8, and a durable link would show that guess to a recipient who cannot correct it.'
+      - in: query
+        name: rooms
+        schema:
+          default: 1
+          type: integer
+          minimum: 1
+          maximum: 4
+        description: Rooms the link asks for (1-4). Defaults to 1, and cannot be more than adults. Guests spread evenly and fill the earlier rooms first, so 3 adults in 2 rooms give 2 then 1, matching the way a search prices the same stay.
+      - in: query
+        name: currency
+        schema:
+          type: string
+          pattern: ^[A-Z]{3}$
+        description: Optional pricing currency as a 3-letter ISO 4217 code. When omitted the page prices in whatever the recipient's own session uses.
+      - in: query
+        name: locale
+        schema:
+          default: en
+          type: string
+          minLength: 1
+          maxLength: 35
+        description: Page language tag (e.g. en, ar). Defaults to en.
+      - in: query
+        name: siteCode
+        schema:
+          type: string
+          pattern: ^[A-Z]{2}$
+        description: Wego market (point of sale) as a 2-letter code, e.g. AE; defaults to US. It selects the wego.com host the link points at.
+  /v1/hotels/{hotelId}/rates:
+    get:
+      operationId: getHotelRates
+      tags:
+      - Hotels
+      summary: List a hotel's rooms & rates
+      description: 'Returns the Book-on-Wego rooms & rates for a hotel (cheapest-first): room name, board, refundability, price, and each rate''s composed booking reference id. searchId must name a hotel-scoped search (one created with hotelId); a city or geo search is a 409.'
+      responses:
+        '200':
+          description: Cheapest-first Book-on-Wego rates.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hotelId:
+                    type: number
+                    description: The hotel these rates are for.
+                  searchId:
+                    type: string
+                    description: The search these rates were priced within.
+                  currencyCode:
+                    type: string
+                    description: 'The currency every rate price on this read was computed in – the same value as metadata.currencyCode, which carries currencyCodeSource beside it. Read it before you show a number: a price computed in the wrong currency renders as a perfectly normal price.'
+                  searchComplete:
+                    type: boolean
+                    description: 'Advisory: true means upstream reports it finished aggregating rates for this search. It is not a guarantee that the list on this page is final, so do not block on it.'
+                  stay:
+                    type: object
+                    properties:
+                      checkIn:
+                        type: string
+                        description: Check-in date priced upstream, YYYY-MM-DD.
+                      checkOut:
+                        type: string
+                        description: Check-out date priced upstream, YYYY-MM-DD.
+                      nights:
+                        type: integer
+                        minimum: -9007199254740991
+                        maximum: 9007199254740991
+                        description: Nights between checkIn and checkOut. price.total covers this many nights of price.amountPerNight.
+                      occupancy:
+                        type: object
+                        properties:
+                          adults:
+                            type: integer
+                            minimum: -9007199254740991
+                            maximum: 9007199254740991
+                            description: Adults priced upstream for this search.
+                          childrenAges:
+                            type: array
+                            items:
+                              type: integer
+                              minimum: -9007199254740991
+                              maximum: 9007199254740991
+                            description: Resolved per-child ages actually sent upstream (age-8 fallback when omitted).
+                          rooms:
+                            type: integer
+                            minimum: -9007199254740991
+                            maximum: 9007199254740991
+                            description: Rooms priced upstream for this search.
+                        required:
+                        - adults
+                        - childrenAges
+                        - rooms
+                        description: The occupancy priced upstream for this search (ages resolved, incl. fallback).
+                    required:
+                    - checkIn
+                    - checkOut
+                    - nights
+                    - occupancy
+                    description: 'What upstream priced: the dates and occupancy every price on this read covers. Present when upstream states them.'
+                  rates:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          description: Composed booking reference (opaque passthrough); pass it to GET /v1/hotels/{hotelId}/rates/{rateId}/booking-link.
+                        roomName:
+                          type: string
+                          description: Room type name, e.g. Deluxe King.
+                        board:
+                          description: Board basis, normalized to lower_snake_case (e.g. room_only, breakfast_included). Absent when the provider states none.
+                          type: string
+                        refundable:
+                          type: boolean
+                          description: True when this rate carries a refundable or free-cancellation code. Authoritative on this endpoint, unlike the results card's refundable witness.
+                        cancellationPolicy:
+                          description: 'Coarse policy derived from the refundability codes: free_cancellation or non_refundable.'
+                          type: string
+                        price:
+                          type: object
+                          properties:
+                            scope:
+                              type: string
+                              const: booking
+                              description: 'What every amount here covers: the whole booking, all rooms in the search.'
+                            amountPerNight:
+                              type: number
+                              description: One night of the whole booking, in the request currency, covering every room. Rounded to a whole currency unit upstream; total is the exact stay figure.
+                            taxAmountPerNight:
+                              description: Per-night tax, when reported.
+                              type: number
+                            taxInclusive:
+                              description: Whether amountPerNight already includes taxAmountPerNight. Says nothing about localTaxPerNight, which is excluded either way.
+                              type: boolean
+                            localTaxPerNight:
+                              description: Per-night local tax (city / tourism / municipality), charged on top of amountPerNight whatever taxInclusive says. wego.com quotes amountPerNight + localTaxPerNight, so quote both. Present when upstream reports the tax, where 0 means none charged. Absent when upstream reports it as unknown.
+                              type: number
+                              minimum: 0
+                            totalLocalTax:
+                              description: Stay total of localTaxPerNight as reported upstream, which rounds the nightly figure. Present when upstream reports the tax. Absent when upstream reports it as unknown.
+                              type: number
+                              minimum: 0
+                            total:
+                              description: Stay total in the request currency. Excludes totalLocalTax, mirroring amountPerNight.
+                              type: number
+                            totalUsd:
+                              type: number
+                              description: Stay total in USD – the cross-currency sort key.
+                            currency:
+                              type: string
+                              description: ISO 4217 currency of the amounts on this price.
+                            deal:
+                              description: The discount advertised on this room's rate, absent when it carries none. Rooms commonly share one offer, so treat a deal here as a property of the rate rather than as a rare find, and compare percentOff across the rooms before recommending one.
+                              type: object
+                              properties:
+                                label:
+                                  description: 'The offer''s own tag, e.g. ''Best Deal''. Its presence also says where wasPerNight came from: see that field.'
+                                  type: string
+                                percentOff:
+                                  type: integer
+                                  minimum: 1
+                                  maximum: 99
+                                  description: This room's discount as a whole percent. A tagged offer's percent wins over a usual-price one, matching the site's precedence, and the two often differ. wego.com renders a percentage only for an UNTAGGED offer; a tagged one it shows as its label plus a crossed-out price, so do not attribute this figure to what the page displays. Always describes the same offer as wasPerNight, so the pair never disagree.
+                                wasPerNight:
+                                  description: Pre-discount per-night price, on amountPerNight's basis so the two subtract cleanly. When label is present this is COMPUTED back from the offer's unrounded discount, since a tagged offer carries no pre-discount price of its own and wego.com renders the same computed figure; quote it as approximate, and expect it to differ slightly from a figure you derive using the rounded percentOff. When label is absent it is the quoted pre-discount price itself.
+                                  type: number
+                                wasTotal:
+                                  description: Pre-discount stay total, on total's basis. Computed or quoted on the same rule as wasPerNight.
+                                  type: number
+                                promoCode:
+                                  description: Promo code the traveller enters at checkout, when the offer carries one. Most live offers are provider discounts with no code. Scoped to this room's rate; wego.com instead shows one such code above the whole room list.
+                                  type: string
+                              required:
+                              - percentOff
+                          required:
+                          - scope
+                          - amountPerNight
+                          - totalUsd
+                          - currency
+                          description: A rate's pricing. Every amount covers the whole booking, all rooms in the search, so quote these figures as they stand. Upstream rounds per booking, so total is the exact stay figure and amountPerNight is one night of it. All amounts exclude totalLocalTax, which wego.com adds to the displayed price.
+                        roomsLeft:
+                          description: Rooms remaining at this rate, when the provider reports scarcity; absent otherwise.
+                          type: number
+                        images:
+                          description: Room image URLs, when the provider supplies them.
+                          type: array
+                          items:
+                            type: string
+                      required:
+                      - id
+                      - roomName
+                      - refundable
+                      - price
+                    description: Bookable rates for the hotel in this search.
+                  metadata:
+                    type: object
+                    properties:
+                      currencyCode:
+                        type: string
+                        description: 'The currency this read ASKED upstream for, and the one every price on it is meant to be in. Read it beside currencyCodeSource before you show a number: a price computed in the wrong currency renders as a perfectly normal price, with no error and no odd shape to notice, so the response states which one rather than leaving it to be inferred. Where the operation also publishes a top-level currencyCode, that field reports the currency the prices actually came back in; the two agree unless upstream declined to reprice.'
+                      currencyCodeSource:
+                        type: string
+                        enum:
+                        - explicit
+                        - default
+                        description: 'How the API resolved currencyCode: explicit (the caller sent currency – including a value equal to the default) or default (USD, no currency sent). A default here is the one signal that the request never carried the currency you meant.'
+                      locale:
+                        type: string
+                        description: The language tag this read asked upstream for – what any localized text on it was resolved in (room and board names, airline and airport names, review prose).
+                      localeSource:
+                        type: string
+                        enum:
+                        - explicit
+                        - default
+                        description: 'How the API resolved locale: explicit (the caller sent locale – including a value equal to the default) or default (en, no locale sent). A default here explains text that came back in a language the caller did not ask for.'
+                    required:
+                    - currencyCode
+                    - currencyCodeSource
+                    - locale
+                    - localeSource
+                    description: What this read resolved currency and locale to, and how each was decided.
+                required:
+                - hotelId
+                - searchId
+                - currencyCode
+                - searchComplete
+                - rates
+                - metadata
+        '400':
+          description: Invalid request parameters.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Unknown hotel, or unknown/expired search.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: The searchId names a city or geo search, which never holds a hotel's full rate list. Create a hotel-scoped search (createHotelSearch with hotelId) and read its rates.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: The upstream hotels service returned an invalid response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The hotels service is unavailable (`upstream_unavailable`) or rate-limited upstream (`upstream_rate_limited`); retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - in: path
+        name: hotelId
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 9007199254740991
+        required: true
+        description: The hotel's numeric id (a positive integer), as carried by hotel search results (results[].hotelId) and embedded in a rate id.
+      - in: query
+        name: searchId
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9._:~=-]{1,256}$
+        required: true
+        description: The search the hotel was found in (from createHotelSearch); rates are priced within that search context. Required.
+      - in: query
+        name: currency
+        schema:
+          default: USD
+          type: string
+          pattern: ^[A-Z]{3}$
+        description: Pricing currency as a 3-letter ISO 4217 code (e.g. AED). Defaults to USD.
+      - in: query
+        name: locale
+        schema:
+          default: en
+          type: string
+          minLength: 1
+          maxLength: 35
+        description: Response language tag (e.g. en, ar). Defaults to en.
+  /v1/hotels/{hotelId}/reviews:
+    get:
+      operationId: getHotelReviews
+      tags:
+      - Hotels
+      summary: Search a hotel's guest reviews
+      description: 'Guest reviews for a hotel, newest first: rating, pros, cons and the provider. Filter by topic with ?topics=breakfast,pool and by cohort with ?guest-type=. Quote a review against metadata.totalCandidates, and cite metadata.matchedTerms for the word actually matched.'
+      responses:
+        '200':
+          description: One page of guest reviews.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hotelId:
+                    type: number
+                    description: The hotel these reviews are for.
+                  metadata:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                        minimum: 1
+                        maximum: 9007199254740991
+                        description: 1-based page number of this read.
+                      pageSize:
+                        type: integer
+                        minimum: 1
+                        maximum: 9007199254740991
+                        description: Reviews requested per page.
+                      resultCount:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: Reviews on this page.
+                      totalCandidates:
+                        description: 'Reviews matching this read''s filters across ALL pages – the denominator to quote a review against (''15 of 141''). It is the FILTERED total, so an unfiltered read is needed to state the hotel''s full review count. EXACT only when hasMore is false: when hasMore is true this can be a LOWER BOUND, because an upstream page that carries no count of its own falls back to the offset plus the rows it sent, so quote it as ''at least N''. ABSENT when this read establishes no total at all – an empty page past the first whose upstream sent no count says nothing about the pages before it. Absent means UNKNOWN, never zero: re-read page 1 before reporting any number.'
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                      hasMore:
+                        type: boolean
+                        description: Another page may follow. A full page always sets this, count or no count. While it is true, read totalCandidates as a floor rather than a corpus size.
+                      topics:
+                        type: array
+                        items:
+                          type: string
+                        description: The topic terms this read asked for.
+                      matchedTerms:
+                        type: array
+                        items:
+                          type: string
+                        description: The term variants the upstream actually matched (e.g. breakfast, Breakfast). Empty on an unfiltered read. Cite from here rather than from topics, so a quote states the word that was really found.
+                    required:
+                    - page
+                    - pageSize
+                    - resultCount
+                    - hasMore
+                    - topics
+                    - matchedTerms
+                    description: Pagination and the matched-topic accounting for this reviews read.
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        rating:
+                          type: number
+                          description: The provider's own 0–10 rating for this review, passed through.
+                        title:
+                          description: Review title, when the guest gave one.
+                          type: string
+                        postedAt:
+                          type: string
+                          description: Calendar date (YYYY-MM-DD).
+                        providerCode:
+                          type: string
+                          description: Which provider collected the review (e.g. booking.com).
+                        guestType:
+                          description: The reviewer's cohort, normalized onto the closed set. Omitted when the upstream sent a value outside it.
+                          type: string
+                          enum:
+                          - couple
+                          - family_with_children
+                          - solo_traveller
+                          - extended_group
+                        pros:
+                          type: array
+                          items:
+                            type: string
+                          description: What the guest liked, verbatim.
+                        cons:
+                          type: array
+                          items:
+                            type: string
+                          description: What the guest disliked, verbatim.
+                        notes:
+                          description: view=detail only – review prose the provider tagged neither positive nor negative.
+                          type: array
+                          items:
+                            type: string
+                        countryCode:
+                          description: view=detail only – the reviewer's country code. The reviewer's name is never returned.
+                          type: string
+                      required:
+                      - rating
+                      - postedAt
+                      - providerCode
+                      - pros
+                      - cons
+                    description: The requested page of guest reviews.
+                required:
+                - hotelId
+                - metadata
+                - results
+        '400':
+          description: Invalid request parameters.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Unknown hotel.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: The upstream hotels service returned an invalid response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The hotels service is unavailable (`upstream_unavailable`) or rate-limited upstream (`upstream_rate_limited`); retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - in: path
+        name: hotelId
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 9007199254740991
+        required: true
+        description: The hotel's numeric id (a positive integer), as carried by hotel search results (results[].hotelId) and embedded in a rate id.
+      - in: query
+        name: page
+        schema:
+          default: 1
+          type: integer
+          minimum: 1
+          maximum: 100
+        description: Page number, 1-based (max 100). Defaults to 1.
+      - in: query
+        name: pageSize
+        schema:
+          default: 10
+          type: integer
+          minimum: 1
+          maximum: 50
+        description: Reviews per page (1-50). Defaults to 10.
+      - in: query
+        name: sort
+        schema:
+          default: posted_at_desc
+          type: string
+          enum:
+          - posted_at_desc
+          - rating_desc
+          - rating_asc
+        description: Sort order. posted_at_desc (default, newest first) – a review corpus answers 'what is it like now', so recency opens; rating_desc / rating_asc sort by the provider's rating.
+      - in: query
+        name: locale
+        schema:
+          default: en
+          type: string
+          minLength: 1
+          maxLength: 35
+        description: Response language tag (e.g. en, ar). Defaults to en.
+      - in: query
+        name: topics
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+        description: Optional topic terms to filter reviews by (repeat or comma-separate, OR'd together) – e.g. ?topics=breakfast,pool keeps reviews mentioning either. metadata.matchedTerms reports the variants actually matched (breakfast, Breakfast).
+      - in: query
+        name: guest-type
+        schema:
+          type: string
+          enum:
+          - couple
+          - family_with_children
+          - solo_traveller
+          - extended_group
+        description: 'Optional reviewer-cohort filter: couple, family_with_children, solo_traveller or extended_group.'
+      - in: query
+        name: view
+        schema:
+          default: default
+          type: string
+          enum:
+          - default
+          - detail
+        description: 'Response projection. default: rating, title, pros, cons, provider. detail: adds the reviewer''s country code and neutral prose notes. Defaults to default.'
+  /v1/hotels/{hotelId}:
+    get:
+      operationId: getHotel
+      tags:
+      - Hotels
+      summary: Get hotel detail
+      description: Returns static hotel detail (name, stars, address, images, amenities, reviews). Use ?view=detail for the richer UI projection.
+      responses:
+        '200':
+          description: Hotel detail (agent default) or the detail projection.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hotelId:
+                    type: number
+                    description: The hotel's numeric id.
+                  name:
+                    type: string
+                    description: Hotel display name.
+                  pageUrl:
+                    type: string
+                    description: The hotel's page on wego.com. It is not tied to a search, so it keeps working after this search expires. Give it to a traveller who wants to look at the hotel, and use it in anything that is saved or sent on. It opens with no dates set.
+                  star:
+                    description: Star rating (1-5), when classified.
+                    type: number
+                  review:
+                    type: object
+                    properties:
+                      score:
+                        type: number
+                        description: Aggregate guest review score (0-10).
+                      count:
+                        type: number
+                        description: Number of guest reviews behind the score.
+                    required:
+                    - score
+                    - count
+                    description: Aggregate guest review score and count.
+                  location:
+                    type: object
+                    properties:
+                      lat:
+                        description: Latitude in decimal degrees.
+                        type: number
+                      lng:
+                        description: Longitude in decimal degrees.
+                        type: number
+                      address:
+                        description: Street address, when available.
+                        type: string
+                      cityName:
+                        description: City name.
+                        type: string
+                      districtName:
+                        description: District or neighbourhood name.
+                        type: string
+                      countryName:
+                        description: Country name.
+                        type: string
+                    description: 'Where the hotel is: coordinates and place names.'
+                  propertyType:
+                    description: Property type, e.g. Hotel, Apartment.
+                    type: string
+                  brandName:
+                    description: Brand name, when the hotel belongs to one.
+                    type: string
+                  chainName:
+                    description: Parent chain name, when known.
+                    type: string
+                  description:
+                    description: Editorial description of the hotel.
+                    type: string
+                  amenities:
+                    description: Hotel-level amenity names.
+                    type: array
+                    items:
+                      type: string
+                  images:
+                    description: Hotel image URLs.
+                    type: array
+                    items:
+                      type: string
+                  distanceToCityCentre:
+                    description: Kilometres from the city's place-record coordinate (the point GET /v1/places reports for the city). Where a city record covers an island, a city-state or a whole administrative area, that point can sit far from the commercial centre. For a specific landmark, compute distance from location.lat/lng. Present when upstream reports it.
+                    type: number
+                  distanceToNearestAirport:
+                    description: Distance to the nearest airport, as the upstream reports it (unit not normalized here). Absent when upstream omits it.
+                    type: number
+                  categorizedImages:
+                    description: view=detail only – hotel images grouped by category (e.g. Rooms, Pool). Absent when the content service supplies none.
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        category:
+                          type: string
+                          description: Image category name, e.g. Rooms, Pool.
+                        images:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              url:
+                                type: string
+                                description: Image URL.
+                              altText:
+                                description: Alt text for the image, when provided.
+                                type: string
+                            required:
+                            - url
+                          description: Images in this category.
+                      required:
+                      - category
+                      - images
+                  reviewHighlights:
+                    description: view=detail only – short editorial review snippets with a sentiment tag. Absent when none are published.
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        sentiment:
+                          description: Sentiment tag for the snippet, e.g. positive, negative.
+                          type: string
+                        text:
+                          type: string
+                          description: The review snippet text.
+                      required:
+                      - text
+                  highlights:
+                    description: Editorial badges from the hotel content service.
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        text:
+                          type: string
+                          description: Badge label.
+                        subtext:
+                          description: Badge supporting text, when present.
+                          type: string
+                      required:
+                      - text
+                required:
+                - hotelId
+                - name
+                - pageUrl
+                - location
+        '400':
+          description: Invalid request parameters.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Unknown hotel.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: The upstream hotels service returned an invalid response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The hotels service is unavailable (`upstream_unavailable`) or rate-limited upstream (`upstream_rate_limited`); retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - in: path
+        name: hotelId
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 9007199254740991
+        required: true
+        description: The hotel's numeric id (a positive integer), as carried by hotel search results (results[].hotelId) and embedded in a rate id.
+      - in: query
+        name: locale
+        schema:
+          default: en
+          type: string
+          minLength: 1
+          maxLength: 35
+        description: Response language tag (e.g. en, ar). Defaults to en.
+      - in: query
+        name: view
+        schema:
+          default: default
+          type: string
+          enum:
+          - default
+          - detail
+        description: 'Response projection. default: the agent hotel detail. detail: the richer UI projection (categorized images, review highlights, badges). Defaults to default.'
+components:
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details, served as application/problem+json.
+      required:
+      - type
+      - title
+      - status
+      - instance
+      - code
+      - trace_id
+      properties:
+        type:
+          type: string
+          format: uri
+          description: Problem-type URI. `about:blank` for now (no semantics beyond the status); real type URIs follow once the public host is fixed.
+        title:
+          type: string
+          description: Fixed human summary, the same across a `code`.
+        status:
+          type: integer
+          description: The HTTP status code, repeated as a JSON number.
+        detail:
+          type: string
+          description: Instance-specific human explanation of this failure.
+        instance:
+          type: string
+          description: The request path this occurrence happened on.
+        code:
+          type: string
+          enum:
+          - validation_failed
+          - invalid_token
+          - insufficient_scope
+          - not_found
+          - rates_require_hotel_search
+          - rate_limited
+          - bad_gateway
+          - upstream_unavailable
+          - upstream_rate_limited
+          - internal_error
+          description: Stable machine token from a closed enum – the field an agent branches on.
+        trace_id:
+          type: string
+          description: Correlates this response to its logs; also returned in the `x-trace-id` response header.
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'Wego auth server access token, sent as `Authorization: Bearer <token>` (RFC 6750).'
+    oauth2:
+      type: oauth2
+      description: OAuth2 authorization-code flow (PKCE supported) against the Wego auth server.
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.wego.com/user-auth/v2/users/oauth/authorize
+          tokenUrl: https://auth.wego.com/user-auth/v2/users/oauth/token
+          x-scalar-client-id: 251815b9647317f4895122fd4924b7d44541d8fcc27be528435e3ad9bbf7e1ee
+          x-usePkce: SHA-256
+          scopes:
+            openid: OpenID Connect sign-in.
+            profile: Basic profile claims.
+            users: User identity for the API.
+      x-default-scopes:
+      - openid
+      - profile
+      - users

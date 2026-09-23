@@ -1,0 +1,418 @@
+openapi: 3.2.0
+info:
+  title: Wego Places API
+  description: 'Wego''s travel API: places, flights, hotels and fares. Please see https://docs.wego.com for more details.'
+  version: 0.19.0
+servers:
+- url: https://api.wego.com
+security:
+- oauth2: []
+- bearerAuth: []
+tags:
+- name: Places
+  description: Turn free text into typed travel locations. `getPlaces` resolves a city, airport, district or hotel name to results carrying the codes the flight and hotel searches take as input. `getNearbyPlaces` answers the follow-up – which other airports serve the same trip – from a place code or a coordinate pair.
+paths:
+  /v1/places/nearby:
+    get:
+      operationId: getNearbyPlaces
+      tags:
+      - Places
+      summary: Airports and cities near a point
+      description: The airports (and optionally cities) closest to a place or a coordinate pair, nearest first – for finding an alternative departure airport serving the same trip. Pass either place (a code, resolved to coordinates here) or latitude+longitude, never neither.
+      responses:
+        '200':
+          description: Nearby places, nearest first, plus the origin they were measured from.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          description: 'Opaque identifier, unique per place. Do not send it to other endpoints or build wego.com URLs from it: reference a place by code, or by cityCode for a hotels search.'
+                          anyOf:
+                          - type: number
+                          - type: string
+                        code:
+                          description: IATA-style code (airport/city), when the place has one.
+                          type: string
+                        name:
+                          type: string
+                          description: Display name of the place.
+                        type:
+                          type: string
+                          description: 'Place kind: city, airport, state, district or hotel.'
+                        cityCode:
+                          description: Code of the city this place belongs to.
+                          type: string
+                        latitude:
+                          description: Latitude in decimal degrees, when known.
+                          type: number
+                        longitude:
+                          description: Longitude in decimal degrees, when known.
+                          type: number
+                      required:
+                      - name
+                      - type
+                    description: The nearby places found around the origin.
+                  metadata:
+                    type: object
+                    properties:
+                      resultCount:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: Number of results on the current page (always <= pageSize).
+                      totalCandidates:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: Rows the upstream returned before this page was sliced. The upstream ignores per_page and answers with roughly ten rows, so pageSize can only narrow this, never reach further.
+                      hasMore:
+                        type: boolean
+                        description: True when pageSize clipped the upstream rows.
+                      origin:
+                        type: object
+                        properties:
+                          latitude:
+                            type: number
+                            description: Latitude the upstream was queried with.
+                          longitude:
+                            type: number
+                            description: Longitude the upstream was queried with.
+                          resolvedFrom:
+                            type: string
+                            enum:
+                            - place
+                            - coordinates
+                            description: '`place` when a code was resolved to these coordinates, `coordinates` when the caller supplied them.'
+                          code:
+                            description: The resolved place code, present only when resolvedFrom is place.
+                            type: string
+                          name:
+                            description: The resolved place name, present only when resolvedFrom is place.
+                            type: string
+                        required:
+                        - latitude
+                        - longitude
+                        - resolvedFrom
+                        description: The point the nearby search ran from, and how it was derived.
+                    required:
+                    - resultCount
+                    - totalCandidates
+                    - hasMore
+                    - origin
+                    description: Pagination and the resolved origin for this nearby search.
+                required:
+                - results
+                - metadata
+        '400':
+          description: Neither a place nor a coordinate pair, an out-of-range coordinate, or a place code that resolves to nothing with coordinates.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: The upstream places service returned an invalid response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The places service is temporarily unavailable; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - in: query
+        name: place
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 100
+        description: Place code to search around (e.g. LON, LHR). Resolved to coordinates before the upstream call.
+      - in: query
+        name: latitude
+        schema:
+          type: number
+          minimum: -90
+          maximum: 90
+        description: Latitude of the point to search around, decimal degrees (-90 to 90). Give latitude and longitude together; use either this pair or place, never both.
+      - in: query
+        name: longitude
+        schema:
+          type: number
+          minimum: -180
+          maximum: 180
+        description: Longitude of the point to search around, decimal degrees (-180 to 180). Give latitude and longitude together; use either this pair or place, never both.
+      - in: query
+        name: types
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+            enum:
+            - city
+            - airport
+            - state
+            - district
+            - hotel
+        description: Place types to resolve; repeat or comma-separate to mix.
+      - in: query
+        name: locale
+        schema:
+          default: en
+          type: string
+          minLength: 1
+          maxLength: 35
+        description: Language tag for localized place names (e.g. en, ar). Defaults to en.
+      - in: query
+        name: pageSize
+        schema:
+          default: 50
+          type: integer
+          minimum: 1
+          maximum: 50
+        description: Max results (1-50). Defaults to 50, the maximum, because this read wants the complete set of nearby places, not a page of it. The upstream returns roughly ten rows and ignores paging, so pageSize can only narrow that set, never reach further.
+  /v1/places:
+    get:
+      operationId: getPlaces
+      tags:
+      - Places
+      summary: Resolve travel locations
+      description: Resolves a free-text location query to canonical Wego places (cities, airports, states, districts, hotels) with codes and coordinates, for use in later flight and hotel searches. When metadata.hasAmbiguity is true, clarify with the user before proceeding.
+      responses:
+        '200':
+          description: Matching places plus pagination/ambiguity metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          description: 'Opaque identifier, unique per place. Do not send it to other endpoints or build wego.com URLs from it: reference a place by code, or by cityCode for a hotels search.'
+                          anyOf:
+                          - type: number
+                          - type: string
+                        code:
+                          description: IATA-style code (airport/city), when the place has one.
+                          type: string
+                        name:
+                          type: string
+                          description: Display name of the place.
+                        type:
+                          type: string
+                          description: 'Place kind: city, airport, state, district or hotel.'
+                        cityCode:
+                          description: Code of the city this place belongs to.
+                          type: string
+                        latitude:
+                          description: Latitude in decimal degrees, when known.
+                          type: number
+                        longitude:
+                          description: Longitude in decimal degrees, when known.
+                          type: number
+                      required:
+                      - name
+                      - type
+                    description: The matched places for this page.
+                  metadata:
+                    type: object
+                    properties:
+                      resultCount:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: Number of results on the current page (always <= pageSize).
+                      totalCandidates:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                        description: Total matches held for this query (post-dedup, pre-pagination) – the ceiling pagination can reach. 0 means no matches; an empty deep page with totalCandidates > 0 just means the offset is past the end.
+                      hasMore:
+                        type: boolean
+                        description: True when a further page exists.
+                      hasAmbiguity:
+                        type: boolean
+                        description: True when several distinct real-world locations share the query; ask the user to disambiguate before searching.
+                      disambiguationHint:
+                        description: Short clarification sample, present only when hasAmbiguity.
+                        type: string
+                    required:
+                    - resultCount
+                    - totalCandidates
+                    - hasMore
+                    - hasAmbiguity
+                    description: Pagination and ambiguity signals for this place search.
+                required:
+                - results
+                - metadata
+        '400':
+          description: Invalid query parameters.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limit exceeded; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: The upstream places service returned an invalid response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The places service is temporarily unavailable; retry after the `Retry-After` seconds.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - in: query
+        name: query
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: dubai
+        required: true
+        description: Free text to resolve to typed places with codes. A place-name search (city, airport, district, hotel).
+      - in: query
+        name: types
+        schema:
+          minItems: 1
+          type: array
+          items:
+            type: string
+            enum:
+            - city
+            - airport
+            - state
+            - district
+            - hotel
+        description: Place types to resolve; repeat or comma-separate to mix.
+      - in: query
+        name: locale
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 35
+        description: 'Language tag for localized place names (e.g. en, ar). Omitted, the search is language-neutral: the query matches names in any language (sent upstream as the locale wildcard) and results carry canonical English names. Pass a tag to localize the returned names instead. getNearbyPlaces, by contrast, defaults to en.'
+      - in: query
+        name: page
+        schema:
+          default: 1
+          type: integer
+          minimum: 1
+          maximum: 100
+        description: Page number, 1-based (max 100). Defaults to 1.
+      - in: query
+        name: pageSize
+        schema:
+          default: 10
+          type: integer
+          minimum: 1
+          maximum: 50
+        description: Results per page (1-50). Defaults to 10.
+components:
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details, served as application/problem+json.
+      required:
+      - type
+      - title
+      - status
+      - instance
+      - code
+      - trace_id
+      properties:
+        type:
+          type: string
+          format: uri
+          description: Problem-type URI. `about:blank` for now (no semantics beyond the status); real type URIs follow once the public host is fixed.
+        title:
+          type: string
+          description: Fixed human summary, the same across a `code`.
+        status:
+          type: integer
+          description: The HTTP status code, repeated as a JSON number.
+        detail:
+          type: string
+          description: Instance-specific human explanation of this failure.
+        instance:
+          type: string
+          description: The request path this occurrence happened on.
+        code:
+          type: string
+          enum:
+          - validation_failed
+          - invalid_token
+          - insufficient_scope
+          - not_found
+          - rates_require_hotel_search
+          - rate_limited
+          - bad_gateway
+          - upstream_unavailable
+          - upstream_rate_limited
+          - internal_error
+          description: Stable machine token from a closed enum – the field an agent branches on.
+        trace_id:
+          type: string
+          description: Correlates this response to its logs; also returned in the `x-trace-id` response header.
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'Wego auth server access token, sent as `Authorization: Bearer <token>` (RFC 6750).'
+    oauth2:
+      type: oauth2
+      description: OAuth2 authorization-code flow (PKCE supported) against the Wego auth server.
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.wego.com/user-auth/v2/users/oauth/authorize
+          tokenUrl: https://auth.wego.com/user-auth/v2/users/oauth/token
+          x-scalar-client-id: 251815b9647317f4895122fd4924b7d44541d8fcc27be528435e3ad9bbf7e1ee
+          x-usePkce: SHA-256
+          scopes:
+            openid: OpenID Connect sign-in.
+            profile: Basic profile claims.
+            users: User identity for the API.
+      x-default-scopes:
+      - openid
+      - profile
+      - users
