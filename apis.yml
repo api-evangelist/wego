@@ -23,7 +23,7 @@ tags:
 - Hotels
 - Metasearch
 - Booking
-- agent-native
+- Agent-Native
 - Tourism
 - Search
 tags_raw:
@@ -36,6 +36,7 @@ tags_raw:
 - Agent Native
 - Tourism
 - Search
+- agent-native
 apis:
 - aid: wego:wego-affiliate
   image: https://avatars.githubusercontent.com/u/69198?v=4
