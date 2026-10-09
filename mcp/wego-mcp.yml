@@ -70,3 +70,19 @@ x-evidence:
   http_status: 200
   content_type: application/json
   fetched: '2026-09-04'
+rfc9728:
+  endpoint: https://api.wego.com/mcp
+  metadata_url: https://api.wego.com/.well-known/oauth-protected-resource/mcp
+  discovered_via: WWW-Authenticate resource_metadata on an anonymous POST initialize
+  fetched: '2026-09-25'
+  http_status: 200
+  content_type: application/json
+  document:
+    resource: https://api.wego.com/mcp
+    authorization_servers:
+    - https://api.wego.com/mcp
+    scopes_supported:
+    - openid
+    - profile
+    - users
+    resource_name: Wego API
