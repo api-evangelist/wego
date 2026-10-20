@@ -9,21 +9,14 @@ checked:
 - https://registry.npmjs.org
 - https://repo1.maven.org/maven2
 - https://rubygems.org/api/v1
+- https://api.github.com
+- https://claude-plugins.dev/sitemap.xml
+- https://github.com/VoltAgent/awesome-agent-skills
+- https://officialskills.sh/sitemap.xml
+- https://skillsmp.com/sitemap.xml
+- https://www.skills.sh/sitemap.xml
 source: https://integrations-api.siteminder.com/public/partners/all?lang=en
 edges:
-- partner_name: SiteMinder
-  partner: siteminder
-  partner_match: aggregator
-  type: coverage
-  channel: partner-built
-  relationship: connector-coverage
-  direction: partner-built
-  evidence: https://integrations-api.siteminder.com/public/partners/all?lang=en
-  listed_as: Wego
-  detected_by: sweep-hospitality.py
-  detected: '2026-10-14'
-  categories:
-  - channels_plus
 - partner_name: Go module proxy
   partner: null
   partner_match: null
@@ -84,3 +77,48 @@ edges:
     detected: '2026-10-18'
   detected_by: sweep-official-sdks.py
   first_seen: '2026-10-18'
+- partner_name: SiteMinder
+  partner: siteminder
+  partner_match: aggregator
+  type: coverage
+  channel: partner-built
+  relationship: connector-coverage
+  direction: partner-built
+  evidence: https://integrations-api.siteminder.com/public/partners/all?lang=en
+  listed_as: Wego
+  detected_by: sweep-hospitality.py
+  detected: '2026-10-19'
+  categories:
+  - channels_plus
+- partner_name: Agent Skills (own GitHub org)
+  partner: null
+  partner_match: register
+  type: register
+  direction: provider-built
+  category: Agent Skills package
+  evidence: https://github.com/wego/skills
+  channel: provider-built
+  relationship: compatible
+  shape: agent-skills
+  evidence_kind: own-repo
+  degree: skill-repo
+  report_only: true
+  agent_skills:
+    org: wego
+    current: true
+    repos:
+    - repo: wego/skills
+      archived: false
+      lapsed: false
+      pushed: '2026-10-13'
+  contract_reference:
+    register: 'provider''s own GitHub org (GitHub REST API: repo + git tree holds SKILL.md)'
+    spec_file: null
+    standard: Agent Skills (agentskills.io)
+    role: agent-skills-repo
+    matched_org: wego
+    matched_by: org-profile-domain:wego.com
+    detected_by: sweep-agent-skills.py
+    detected: '2026-10-20'
+  detected_by: sweep-agent-skills.py
+  first_seen: '2026-10-20'
